@@ -72,6 +72,20 @@ export async function materialiseRepository(
   repo: string,
   ref: string,
   organizationId: string | null = null,
+  /*
+   * The installation, when the caller already knows it.
+   *
+   * A run started from the browser knows a workspace and derives the
+   * installation from it. A webhook knows the installation and nothing else —
+   * the delivery carries `installation.id`, and there may be no workspace row
+   * for that repository at all. Passing it in is the difference between
+   * reusing this function and writing a second tarball reader beside it.
+   *
+   * It does not widen anything: an installation token still reaches only what
+   * that installation was granted, which is the guarantee this has always
+   * rested on.
+   */
+  installationOverride: number | null = null,
 ): Promise<Materialised> {
   const config = readGitHubApp();
   if (!config) throw new Error('No GitHub App configured');
@@ -80,7 +94,8 @@ export async function materialiseRepository(
   // repository through the shared installation would work only for
   // repositories the operator was granted, and would be the wrong token to use
   // even then.
-  const installationId = await installationIdFor(organizationId);
+  const installationId =
+    installationOverride ?? (await installationIdFor(organizationId));
   if (!installationId)
     throw new Error('No GitHub installation for this workspace');
 

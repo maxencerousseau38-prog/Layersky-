@@ -10,7 +10,18 @@ import { isSupabaseConfigured, readSupabaseEnv } from './env';
  * the page just works, for anyone. This way a new route is protected until
  * someone deliberately opens it.
  */
-const PUBLIC_PATHS = ['/login', '/auth/callback', '/api/version'];
+/*
+ * `/api/github/webhook` is public because GitHub holds no session. What stands
+ * in for one is the HMAC over the raw body, checked before the route does any
+ * work — see `lib/github/webhook.ts`. Listed here rather than special-cased in
+ * the proxy, because a second copy of an allow-list is the copy that drifts.
+ */
+const PUBLIC_PATHS = [
+  '/login',
+  '/auth/callback',
+  '/api/version',
+  '/api/github/webhook',
+];
 
 /**
  * Exported because the root layout needs the same answer.

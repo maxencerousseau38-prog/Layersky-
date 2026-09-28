@@ -78,6 +78,7 @@ from reading the toggle.
 | `GITHUB_APP_SLUG` | yes | Builds the App installation URL |
 | `GITHUB_OAUTH_CLIENT_ID` | yes | Proves the caller owns the installation they name. Read from `GET /app` — see below |
 | `GITHUB_OAUTH_CLIENT_SECRET` | yes | Completes the pair the callback needs. Set by hand on 2026-08-28 — see below |
+| `GITHUB_WEBHOOK_SECRET` | yes, for the i18n check | HMAC secret shared with the GitHub App's webhook. `/api/github/webhook` refuses every delivery with 503 while it is empty, and says which variable — the only way to tell an unset value from one `vercel env add` wrote blank in a non-interactive shell, which `vercel env ls` lists as present |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes, Production only | Writes the GitHub link after the callback verifies it — the only use of this key. Bypasses RLS: server-only, never `NEXT_PUBLIC_`. Set by the owner on 2026-09-16 — see below |
 
 **Two rows left this table on 2026-08-23**, removed from the project rather

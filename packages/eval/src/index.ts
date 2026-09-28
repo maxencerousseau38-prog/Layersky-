@@ -30,6 +30,7 @@ export {
 } from './deterministic/glossary.js';
 export { scoreTranslation } from './deterministic/score.js';
 export { loadCorpus, loadGlossary, CORPUS_DATA_DIR } from './corpus/load.js';
+export * from './audit/index.js';
 export * from './ambiguity/build.js';
 export * from './ambiguity/cases.js';
 export * from './ambiguity/score.js';
