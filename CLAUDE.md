@@ -712,6 +712,110 @@
   CSP à nonce par requête (`src/proxy.ts`), à l'inverse d'`apps/site` : les deux
   configurations documentent leur arbitrage et pourquoi il ne se transpose pas.
 
+  ### Le guardrail i18n sur pull request — premier vertical slice
+
+  **Le produit a une seconde hypothèse, et elle tourne** (#124 et #125,
+  2026-09-29). L'ancien pipeline `extraction → traduction → PR` reste, en
+  legacy. Le nouveau est `PR GitHub → analyse i18n → GitHub Check`, et la
+  valeur visée n'est plus de traduire mais de **détecter ce qu'une PR casse**.
+
+  `POST /api/github/webhook` (`apps/web`) reçoit, `packages/core/src/i18n`
+  lit — bibliothèque i18n, clés appelées, catalogues — et
+  `packages/eval/src/audit` juge, en réutilisant `extractPlaceholders`,
+  `isIcuMessage` et `validateIcu`, déjà sous gate CI à 99,5 %. Aucun modèle
+  n'est appelé sur ce chemin : pas de coût, pas de quota, pas de file.
+
+  **Prouvé contre un vrai dépôt, pas seulement en test.** PR #13 de
+  `localize-infra-fixture-i18next` ajoute `app.continuousTest` à
+  `locales/en/common.json` et oublie six langues. Le 2026-09-29 à 13:16 UTC, le
+  Check `Layersky i18n` sur `d73683d` a répondu `neutral`, *« 6 i18n
+  problems — Checked 1 key against 6 languages »*, une ligne par locale.
+
+  **« Checked 1 key », pas 12, et c'est la propriété qui rend l'outil
+  utilisable.** Le catalogue anglais porte d'autres clés non traduites ; une PR
+  ne répond que de celles qu'elle **ajoute**, calculées contre `base.sha`.
+  Reprocher l'arriéré est la façon la plus sûre de faire désactiver un check.
+
+  **La première version était aveugle au cas le plus fréquent.** Elle ne
+  scannait que les fichiers source modifiés, donc une PR qui ne touche qu'un
+  catalogue produisait *« No translation keys were touched »* — exact sur ce
+  qu'elle avait regardé, inutile sur ce qui comptait. La conception partait de
+  « le code appelle une clé » ; le cas réel est l'inverse, le catalogue gagne
+  une clé et personne ne traduit. C'est #125 qui l'a corrigé.
+
+  **Trois choses n'ont demandé aucune infrastructure.** L'idempotence : GitHub
+  clé ses check runs par `(name, head_sha)`, donc une seconde livraison met à
+  jour au lieu d'empiler — pas de table. La prévention de boucle : deux signaux
+  gratuits et indépendants, le préfixe de branche que ce produit utilise et
+  l'auteur `Bot`. Et pas de file, parce que l'analyse est du calcul sur les
+  fichiers d'une PR — **ce qui cesserait d'être vrai si une étape de correction
+  était ajoutée**, le run redevenant une somme d'appels modèle.
+
+  **`neutral`, jamais `failure`.** Personne n'a accepté que ça bloque une
+  fusion, et rougir sur un dépôt à checks obligatoires arrêterait le travail de
+  quelqu'un sur la foi d'une hypothèse qu'aucun utilisateur n'a validée. Ça
+  peut devenir `failure` le jour où on le demande ; c'est le sens qui n'exige
+  pas d'excuses.
+
+  **Un dépôt non analysable reçoit un Check qui le dit, et `neutral`.** « No
+  problems found » sur un dépôt dont rien n'a été lu est un silence qui se lit
+  comme une approbation — précisément le défaut que ce produit prétend
+  supprimer.
+
+  #### Le piège qui a coûté la journée : App ≠ installation
+
+  Le webhook n'a rien reçu pendant des heures, et la cause n'était dans aucun
+  log : **modifier les permissions ou les événements d'une GitHub App est une
+  *demande*. L'installation existante garde l'ancien jeu tant que le
+  propriétaire n'a pas accepté.** `GET /app` annonçait
+  `events: ["pull_request"]` et `checks: write` ; `GET /app/installations/<id>`
+  répondait `events: []` et pas de `checks`.
+
+  **Le témoin est `updated_at` sur l'installation.** Il est resté figé à la
+  seconde près pendant trois tentatives, dont un double Save qui a bien
+  re-déclaré le côté App. Aucun bandeau d'acceptation n'est jamais apparu. La
+  seule issue a été **désinstaller et réinstaller**, ce qui accorde le jeu
+  courant d'emblée — et crée un **nouvel `installation_id`**.
+
+  Coût de ce changement : `organization_github_installations` porte cet
+  identifiant, **une ligne, un seul endroit** — `GITHUB_APP_INSTALLATION_ID`
+  n'existe plus sur aucun projet Vercel. L'installation est passée de
+  `151289538` (supprimée, 404) à `166148995`, et la ligne a été mise à jour le
+  2026-09-29. Le webhook n'en dépend pas, il lit l'identifiant dans la
+  livraison ; **« Run pipeline » depuis le navigateur, si** — il le résout
+  depuis cette ligne, et il a été cassé entre la réinstallation et la mise à
+  jour.
+
+  La règle : **écrire l'`UPDATE` ne prouve pas qu'il marche.** Ce qui le prouve
+  est d'émettre un jeton d'installation pour l'identifiant désormais stocké et
+  de lister les dépôts qu'il atteint.
+
+  Et la leçon de diagnostic, plus générale : `hook_attributes` **n'est pas
+  renvoyé** par `GET /app`, donc en conclure « aucune URL de webhook » est
+  faux — c'est l'absence du champ, pas du réglage. `GET /app/hook/config` le
+  donne. `GET /app/hook/deliveries` dit si GitHub a seulement essayé, ce
+  qu'aucun log applicatif ne peut dire.
+
+  #### Limites connues de ce slice
+
+  **Un seul framework : i18next.** next-intl et react-intl sont détectés et
+  déclarés non supportés — une réponse différente de « aucune bibliothèque
+  trouvée ».
+
+  **Le chemin « scan des sources » produirait des faux positifs sur le fixture
+  lui-même.** `src/i18n.ts` y déclare `defaultNS: 'common'`, donc le code
+  appelle `t('app.title')` sans préfixe alors que le chargeur indexe
+  `common:app.title`. Le chemin « catalogue » — celui qui est prouvé — n'est
+  pas concerné : les deux côtés portent le même préfixe.
+
+  **Un `keySeparator` personnalisé n'est pas supporté** et produirait des clés
+  manquantes fausses. Seuls `public/locales`, `locales` et `src/locales` sont
+  cherchés.
+
+  **Et l'hypothèse produit n'est toujours pas validée.** Le slice marche ; rien
+  ne dit qu'il sert à quelqu'un. §C1 est intact : une organisation en
+  production, celle du propriétaire, zéro entretien.
+
 **Cette liste énumérait comme inexistants : base de données, comptes,
 organisations, équipes, permissions, facturation, projets persistants, tableau
 de bord. Sept des huit existent aujourd'hui** — Postgres, l'authentification,
@@ -892,7 +996,7 @@ disait « le flux reste donc coupé et continue de le dire » ; ce n'est plus vr
 `readOAuthConfig()` renvoie la paire et `canInstall` est vrai.
 
 La preuve n'est pas le réglage mais son résultat :
-`organization_github_installations` porte l'installation `151289538`
+`organization_github_installations` a porté l'installation `151289538`
 (`maxencerousseau38-prog`, compte utilisateur) pour `layersky`, connectée le
 2026-08-28 à 12:26 **par le flux OAuth de l'interface** — le seul chemin qui
 exige le secret, puisque c'est lui qui échange le `code` puis vérifie
@@ -900,6 +1004,14 @@ l'installation contre le jeton de l'utilisateur. Une ligne posée en SQL aurait
 exactement la même apparence en base ; c'est le propriétaire qui a confirmé le
 chemin emprunté, et c'est pour ça que la question a été posée plutôt que
 déduite.
+
+**Cet identifiant est périmé, et la preuve ci-dessus tient quand même.** Ce
+paragraphe disait au présent que la base porte `151289538` ; elle porte
+`166148995` depuis le 2026-09-29, l'ancienne installation ayant été supprimée
+et recréée pour débloquer l'acceptation des permissions — voir le slice
+guardrail plus haut. Ce qui est démontré ici n'est pas un numéro mais qu'un
+flux OAuth complet a écrit la ligne, et cette démonstration ne se rejoue pas :
+la réinstallation, elle, s'est faite à la main.
 
 Les deux réglages de l'App restent ni modifiables ni **lisibles** par API :
 « Request user authorization (OAuth) during installation », et l'URL de callback
