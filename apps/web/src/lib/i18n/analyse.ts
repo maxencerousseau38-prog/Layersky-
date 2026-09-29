@@ -47,6 +47,35 @@ export interface AnalyseArgs {
    * would be a guess dressed as a fact.
    */
   sourceLocale?: string;
+  /**
+   * The source-locale catalogue as it stands on the pull request's base.
+   *
+   * Without it the analysis only ever sees keys the *code* asks for, and the
+   * most common real change is the opposite one: somebody adds an English
+   * string and nobody translates it. Pull request #13 on the i18next fixture
+   * was exactly that — one line added to `locales/en/common.json`, no source
+   * touched — and the check answered "No translation keys were touched",
+   * which was true of what it had looked at and useless about what mattered.
+   *
+   * Comparing against the base rather than auditing the whole file is what
+   * keeps this honest: a pull request must be answerable for the keys it adds,
+   * not for every key its repository has never translated. Reporting the
+   * backlog is how a check becomes something people switch off.
+   *
+   * Null when the pull request touches no source-locale catalogue, or when the
+   * base could not be read — in which case the added keys are simply unknown
+   * and nothing is invented.
+   */
+  baseSourceCatalogue?: Record<string, string> | null;
+}
+
+/** Keys the pull request adds to the source catalogue, in file order. */
+export function addedSourceKeys(
+  head: Readonly<Record<string, string>>,
+  base: Readonly<Record<string, string>> | null | undefined,
+): string[] {
+  if (!base) return [];
+  return Object.keys(head).filter((key) => !(key in base));
 }
 
 export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
@@ -84,9 +113,28 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
 
   const scan = scanKeyUsage(args.rootDir, analysableFiles(args.changedFiles));
 
+  /*
+   * Two ways a key enters this pull request's scope, and both are audited.
+   *
+   * The code calls it — the original path, from the changed source files. Or
+   * the pull request adds it to the source catalogue, which is the shape the
+   * fixture uses and the one a continuous i18n guardrail exists for. Merged
+   * and de-duplicated, because a pull request that does both should report a
+   * key once.
+   */
+  const usedKeys = [
+    ...new Set([
+      ...distinctKeys(scan),
+      ...addedSourceKeys(
+        catalogues.catalogues[sourceLocale] ?? {},
+        args.baseSourceCatalogue,
+      ),
+    ]),
+  ];
+
   return {
     report: auditI18n({
-      usedKeys: distinctKeys(scan),
+      usedKeys,
       sourceLocale,
       catalogues: catalogues.catalogues,
       dynamicCallSites: scan.dynamicCallSites,

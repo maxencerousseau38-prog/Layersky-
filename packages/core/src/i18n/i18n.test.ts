@@ -164,6 +164,7 @@ describe('loadI18nextCatalogues', () => {
     });
     const loaded = loadI18nextCatalogues(dir);
     expect(loaded.layout).toBe('directory-per-locale');
+    expect(loaded.dir).toBe('public/locales');
     expect(loaded.catalogues.en).toEqual({ 'checkout.submit': 'Go' });
     expect(loaded.catalogues.fr).toEqual({ 'checkout.submit': 'Aller' });
   });
@@ -211,6 +212,10 @@ describe('loadI18nextCatalogues', () => {
       catalogues: {},
       unreadable: [],
       layout: null,
+      // Null, not the last directory tried: a caller comparing a pull request
+      // against its base must be unable to classify any path as a catalogue
+      // when none were found.
+      dir: null,
     });
   });
 

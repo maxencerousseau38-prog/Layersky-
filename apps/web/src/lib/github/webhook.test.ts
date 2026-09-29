@@ -63,6 +63,7 @@ const event = (over: Record<string, unknown> = {}) => ({
     number: 7,
     draft: false,
     head: { sha: 'abc123', ref: 'feature/checkout' },
+    base: { sha: 'base999' },
     user: { type: 'User' },
   },
   ...over,
@@ -79,6 +80,7 @@ describe('decideWebhook', () => {
       pullNumber: 7,
       headSha: 'abc123',
       headRef: 'feature/checkout',
+      baseSha: 'base999',
     });
   });
 
@@ -111,6 +113,7 @@ describe('decideWebhook', () => {
             sha: 'abc',
             ref: 'localize-infra/add-translations-1786961416681',
           },
+          base: { sha: 'base999' },
           user: { type: 'User' },
         },
       }),
@@ -162,6 +165,27 @@ describe('decideWebhook', () => {
 
   it('refuses a payload that is not an object', () => {
     expect(decideWebhook('pull_request', 'nope').act).toBe(false);
+  });
+
+  /*
+   * The base commit is what "added keys" are measured against. Without it the
+   * analysis could only see keys the code calls, which is the blindness pull
+   * request #13 on the fixture exposed — one line added to a catalogue, no
+   * source touched, and a check that said nothing was touched.
+   */
+  it('refuses a payload with no base commit rather than guessing one', () => {
+    const decision = decideWebhook(
+      'pull_request',
+      event({
+        pull_request: {
+          number: 7,
+          draft: false,
+          head: { sha: 'abc123', ref: 'feature/x' },
+          user: { type: 'User' },
+        },
+      }),
+    );
+    expect(decision.act).toBe(false);
   });
 });
 

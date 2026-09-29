@@ -69,6 +69,39 @@ function flatten(
   }
 }
 
+/**
+ * Flatten one catalogue file whose text is already in hand.
+ *
+ * Exported for the case the loader below cannot serve: reading a file as it
+ * exists on the pull request's **base** commit, which is not on disk. Fetching
+ * that blob and flattening it here means one implementation of "what a key is
+ * called", rather than a second one that would drift the first time a
+ * separator changed.
+ *
+ * `namespace` is the prefix i18next would address these keys by — empty for
+ * the default namespace, `common:` for a file named `common.json`.
+ */
+export function flattenCatalogueJson(
+  text: string,
+  namespace: string,
+): Catalogue | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const catalogue: Catalogue = {};
+  flatten(parsed, namespace, '', catalogue);
+  return catalogue;
+}
+
+/** The namespace prefix a catalogue file's keys carry, from its filename. */
+export function namespacePrefixFor(fileName: string): string {
+  const namespace = fileName.replace(/\.json$/i, '');
+  return namespace === DEFAULT_NAMESPACE ? '' : `${namespace}:`;
+}
+
 function readJson(path: string): unknown {
   try {
     return JSON.parse(readFileSync(path, 'utf-8'));
@@ -83,13 +116,67 @@ function readJson(path: string): unknown {
   }
 }
 
+export type CatalogueLayout = 'directory-per-locale' | 'file-per-locale';
+
 export interface LoadedCatalogues {
   /** Locale to flattened catalogue. Only locales that parsed. */
   catalogues: Record<string, Catalogue>;
   /** Files found but not parseable, repository-relative. */
   unreadable: string[];
   /** Where the catalogues were found, for a report that must be checkable. */
-  layout: 'directory-per-locale' | 'file-per-locale' | null;
+  layout: CatalogueLayout | null;
+  /**
+   * The directory the catalogues came from, repository-relative.
+   *
+   * Returned because a caller comparing a pull request against its base has to
+   * recognise which changed paths are catalogues, and guessing that from the
+   * candidate list again would be a second answer to a question this function
+   * already settled.
+   */
+  dir: string | null;
+}
+
+/** What a changed path is, if it is a catalogue at all. */
+export interface CatalogueFile {
+  locale: string;
+  /** The prefix its keys carry: '' for the default namespace, else `ns:`. */
+  namespacePrefix: string;
+}
+
+/**
+ * Decide whether a changed path is a catalogue, and whose.
+ *
+ * Takes the directory and layout the load already established rather than
+ * re-deriving them, so a repository whose catalogues sit in `locales` cannot be
+ * read one way by the loader and another way here.
+ */
+export function classifyCataloguePath(
+  dir: string,
+  layout: CatalogueLayout,
+  path: string,
+): CatalogueFile | null {
+  const normalised = path.replace(/\\/g, '/');
+  if (!normalised.startsWith(`${dir}/`)) return null;
+  if (!/\.json$/i.test(normalised)) return null;
+
+  const rest = normalised.slice(dir.length + 1).split('/');
+
+  if (layout === 'directory-per-locale') {
+    // locales/<locale>/<namespace>.json — anything deeper is not a catalogue
+    // this loader would have read, so it is not one here either.
+    if (rest.length !== 2) return null;
+    return {
+      locale: rest[0] as string,
+      namespacePrefix: namespacePrefixFor(rest[1] as string),
+    };
+  }
+
+  // locales/<locale>.json — no namespaces in this layout.
+  if (rest.length !== 1) return null;
+  return {
+    locale: (rest[0] as string).replace(/\.json$/i, ''),
+    namespacePrefix: '',
+  };
 }
 
 function loadDirectoryPerLocale(localesDir: string): Record<string, Catalogue> {
@@ -181,8 +268,9 @@ export function loadI18nextCatalogues(rootDir: string): LoadedCatalogues {
       catalogues,
       unreadable,
       layout: hasSubdirectory ? 'directory-per-locale' : 'file-per-locale',
+      dir: relativeDir,
     };
   }
 
-  return { catalogues: {}, unreadable: [], layout: null };
+  return { catalogues: {}, unreadable: [], layout: null, dir: null };
 }

@@ -63,6 +63,8 @@ export type WebhookDecision =
       pullNumber: number;
       headSha: string;
       headRef: string;
+      /** The commit the pull request is measured against. */
+      baseSha: string;
     };
 
 /** The slice of the payload this reads. Narrow on purpose. */
@@ -74,6 +76,7 @@ interface PullRequestEvent {
     number?: unknown;
     draft?: unknown;
     head?: { sha?: unknown; ref?: unknown };
+    base?: { sha?: unknown };
     user?: { type?: unknown };
   };
 }
@@ -145,6 +148,7 @@ export function decideWebhook(
   const installationId = num(event.installation?.id);
   const pullNumber = num(event.pull_request?.number);
   const headSha = str(event.pull_request?.head?.sha);
+  const baseSha = str(event.pull_request?.base?.sha);
 
   if (
     !owner ||
@@ -152,7 +156,8 @@ export function decideWebhook(
     !installationId ||
     !pullNumber ||
     !headSha ||
-    !headRef
+    !headRef ||
+    !baseSha
   ) {
     return { act: false, reason: 'payload is missing fields this needs' };
   }
@@ -165,6 +170,7 @@ export function decideWebhook(
     pullNumber,
     headSha,
     headRef,
+    baseSha,
   };
 }
 

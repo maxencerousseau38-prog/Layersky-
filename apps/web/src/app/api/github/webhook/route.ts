@@ -3,6 +3,8 @@ import { readGitHubApp } from '@/lib/github/config';
 import { materialiseRepository } from '@/lib/github/materialise';
 import { decideWebhook, verifySignature } from '@/lib/github/webhook';
 import { analysePullRequest, discardCheckout } from '@/lib/i18n/analyse';
+import { readBaseSourceCatalogue } from '@/lib/i18n/base-catalogue';
+import { loadI18nextCatalogues } from '@localize-infra/core';
 import type { AuditReport } from '@localize-infra/eval';
 import { App } from 'octokit';
 
@@ -39,6 +41,14 @@ import { App } from 'octokit';
  */
 
 export const runtime = 'nodejs';
+
+/*
+ * The locale treated as the source of truth. Named here rather than read from
+ * the repository's i18next config, which lives in code this does not execute —
+ * inferring it would be a guess dressed as a fact, and guessing wrong is
+ * visible immediately because every key reports as missing from the source.
+ */
+const SOURCE_LOCALE = 'en';
 
 function ok(reason: string, extra: Record<string, unknown> = {}) {
   return Response.json({ ok: true, reason, ...extra });
@@ -129,9 +139,46 @@ export async function POST(request: Request): Promise<Response> {
     );
     checkout = materialised.dir;
 
+    /*
+     * Where the catalogues are, asked once, so the base comparison recognises
+     * the same files the audit will read. The load is repeated inside
+     * `analysePullRequest` — a handful of small JSON files from a temporary
+     * directory — rather than threading a pre-loaded value through two call
+     * sites and creating a second code path that could disagree with the
+     * first.
+     */
+    const located = loadI18nextCatalogues(materialised.dir);
+    const base =
+      located.layout && located.dir
+        ? await readBaseSourceCatalogue({
+            fetchFile: async (path, ref) => {
+              const response = await octokit.rest.repos.getContent({
+                owner: decision.owner,
+                repo: decision.repo,
+                path,
+                ref,
+              });
+              const data = response.data as { content?: string };
+              // A file absent on the base answers 404 and throws, which the
+              // caller treats as "no base version" — correct, because every
+              // key in a newly added catalogue is new.
+              return data.content
+                ? Buffer.from(data.content, 'base64').toString('utf-8')
+                : null;
+            },
+            changedFiles,
+            cataloguesDir: located.dir,
+            layout: located.layout,
+            sourceLocale: SOURCE_LOCALE,
+            baseSha: decision.baseSha,
+          })
+        : { catalogue: null, touched: [] };
+
     const analysis = analysePullRequest({
       rootDir: materialised.dir,
       changedFiles,
+      sourceLocale: SOURCE_LOCALE,
+      baseSourceCatalogue: base.catalogue,
     });
 
     /*
@@ -162,6 +209,7 @@ export async function POST(request: Request): Promise<Response> {
       checkRunId,
       findings: report.findings.length,
       skipped: analysis.skipped,
+      catalogueFilesCompared: base.touched.length,
     });
   } catch (error) {
     /*
