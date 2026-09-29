@@ -3,7 +3,7 @@ import { readGitHubApp } from '@/lib/github/config';
 import { materialiseRepository } from '@/lib/github/materialise';
 import { decideWebhook, verifySignature } from '@/lib/github/webhook';
 import { analysePullRequest, discardCheckout } from '@/lib/i18n/analyse';
-import { readBaseSourceCatalogue } from '@/lib/i18n/base-catalogue';
+import { readBaseCatalogues } from '@/lib/i18n/base-catalogue';
 import { loadI18nextCatalogues } from '@localize-infra/core';
 import type { AuditReport } from '@localize-infra/eval';
 import { App } from 'octokit';
@@ -150,7 +150,7 @@ export async function POST(request: Request): Promise<Response> {
     const located = loadI18nextCatalogues(materialised.dir);
     const base =
       located.layout && located.dir
-        ? await readBaseSourceCatalogue({
+        ? await readBaseCatalogues({
             fetchFile: async (path, ref) => {
               const response = await octokit.rest.repos.getContent({
                 owner: decision.owner,
@@ -169,16 +169,15 @@ export async function POST(request: Request): Promise<Response> {
             changedFiles,
             cataloguesDir: located.dir,
             layout: located.layout,
-            sourceLocale: SOURCE_LOCALE,
             baseSha: decision.baseSha,
           })
-        : { catalogue: null, touched: [] };
+        : { catalogues: null, touched: [] };
 
     const analysis = analysePullRequest({
       rootDir: materialised.dir,
       changedFiles,
       sourceLocale: SOURCE_LOCALE,
-      baseSourceCatalogue: base.catalogue,
+      baseCatalogues: base.catalogues,
     });
 
     /*
