@@ -6,12 +6,18 @@ import {
 } from '@localize-infra/core';
 
 /**
- * The source-locale catalogue as it stands on the pull request's base.
+ * The catalogues, per locale, as they stand on the pull request's base.
  *
- * Only the files the pull request actually touched are fetched, and only the
- * ones belonging to the source locale. A repository with seven languages and
- * one changed English file costs one request, not seven — and never the whole
- * tree, which is what materialising the base commit would have meant.
+ * Only the files the pull request actually touched are fetched — never the
+ * whole tree, which is what materialising the base commit would have meant. A
+ * repository with seven languages and one changed file costs one request.
+ *
+ * **Every touched locale, not only the source one.** It was source-only, and
+ * pull request #14 showed the hole: dropping `{{name}}` from an existing
+ * French translation produced no finding, because the key entered no scope.
+ * Degrading a translation that exists is at least as common as forgetting to
+ * write one, so the locale filter is gone and the cost is unchanged — still
+ * one request per file the pull request actually touched.
  *
  * A file that is *added* by the pull request has no base version; GitHub
  * answers 404 and that is the correct answer, not an error. Its keys are new
@@ -25,41 +31,40 @@ export interface BaseCatalogueArgs {
   changedFiles: readonly string[];
   cataloguesDir: string;
   layout: CatalogueLayout;
-  sourceLocale: string;
   baseSha: string;
 }
 
 export interface BaseCatalogueResult {
   /**
-   * The merged base catalogue, or null when the pull request touched no
-   * source-locale catalogue at all.
+   * Locale to its base catalogue, or null when no catalogue was touched.
    *
-   * Null and empty are different answers and must stay so: null means "this
-   * pull request changes no catalogue, so there are no added keys to speak
-   * of", while an empty object means "it added a catalogue that did not exist,
-   * so everything in it is new". Collapsing them would either invent findings
-   * or hide them.
+   * Null and empty stay different answers. Null means "this pull request
+   * changes no catalogue, so there are no changed keys to speak of"; an empty
+   * catalogue for a locale means "it added that file, so everything in it is
+   * new". Collapsing them would either invent findings or hide them.
    */
-  catalogue: Record<string, string> | null;
-  /** Catalogue files the pull request touched for the source locale. */
+  catalogues: Record<string, Record<string, string>> | null;
+  /** Catalogue files the pull request touched, any locale. */
   touched: string[];
 }
 
-export async function readBaseSourceCatalogue(
+export async function readBaseCatalogues(
   args: BaseCatalogueArgs,
 ): Promise<BaseCatalogueResult> {
-  const touched: string[] = [];
+  const touched: { path: string; locale: string; namespacePrefix: string }[] =
+    [];
   for (const path of args.changedFiles) {
     const info = classifyCataloguePath(args.cataloguesDir, args.layout, path);
-    if (info && info.locale === args.sourceLocale) touched.push(path);
+    if (info) touched.push({ path, ...info });
   }
 
-  if (touched.length === 0) return { catalogue: null, touched: [] };
+  if (touched.length === 0) return { catalogues: null, touched: [] };
 
-  const catalogue: Record<string, string> = {};
-  for (const path of touched) {
-    const info = classifyCataloguePath(args.cataloguesDir, args.layout, path);
-    if (!info) continue;
+  const catalogues: Record<string, Record<string, string>> = {};
+  for (const { path, locale, namespacePrefix } of touched) {
+    // A locale whose file could not be read still gets an entry, so the caller
+    // can tell "touched but unreadable" from "not touched at all".
+    catalogues[locale] ??= {};
 
     let text: string | null = null;
     try {
@@ -77,10 +82,10 @@ export async function readBaseSourceCatalogue(
     }
     if (text === null) continue;
 
-    const flat = flattenCatalogueJson(text, info.namespacePrefix);
+    const flat = flattenCatalogueJson(text, namespacePrefix);
     if (!flat) continue;
-    Object.assign(catalogue, flat);
+    Object.assign(catalogues[locale] as Record<string, string>, flat);
   }
 
-  return { catalogue, touched };
+  return { catalogues, touched: touched.map((t) => t.path) };
 }

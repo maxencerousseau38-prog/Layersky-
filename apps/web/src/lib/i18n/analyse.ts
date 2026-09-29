@@ -62,20 +62,39 @@ export interface AnalyseArgs {
    * not for every key its repository has never translated. Reporting the
    * backlog is how a check becomes something people switch off.
    *
-   * Null when the pull request touches no source-locale catalogue, or when the
-   * base could not be read — in which case the added keys are simply unknown
-   * and nothing is invented.
+   * **Every touched locale, not only the source one.** It was the source
+   * catalogue alone, and pull request #14 on the fixture showed what that
+   * misses: it dropped `{{name}}` from an existing French translation, and the
+   * check said nothing. The key was neither called by changed code nor added
+   * to English, so it was in no scope at all — while degrading a translation
+   * that already exists is at least as common as forgetting to write one.
+   *
+   * Null when the pull request touches no catalogue, or when the base could
+   * not be read. Then the changed keys are unknown and nothing is invented.
    */
-  baseSourceCatalogue?: Record<string, string> | null;
+  baseCatalogues?: Record<string, Record<string, string>> | null;
 }
 
-/** Keys the pull request adds to the source catalogue, in file order. */
-export function addedSourceKeys(
+/**
+ * Keys this pull request changed in one catalogue.
+ *
+ * Changed, not added — the generalisation pull request #14 forced. A value
+ * that was edited matters as much as one that appeared: reworded English makes
+ * every translation of it suspect, and an edited French string is exactly
+ * where a placeholder goes missing. Presence differences count too, so a
+ * deleted translation enters scope and is reported as missing.
+ *
+ * Widening from added to changed cannot manufacture findings. A key whose
+ * placeholders still line up produces nothing, so the cost of a large
+ * reformatting commit is a longer scope and an unchanged, empty result.
+ */
+export function changedCatalogueKeys(
   head: Readonly<Record<string, string>>,
   base: Readonly<Record<string, string>> | null | undefined,
 ): string[] {
   if (!base) return [];
-  return Object.keys(head).filter((key) => !(key in base));
+  const keys = new Set([...Object.keys(head), ...Object.keys(base)]);
+  return [...keys].filter((key) => head[key] !== base[key]);
 }
 
 export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
@@ -116,21 +135,27 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
   /*
    * Two ways a key enters this pull request's scope, and both are audited.
    *
-   * The code calls it — the original path, from the changed source files. Or
-   * the pull request adds it to the source catalogue, which is the shape the
-   * fixture uses and the one a continuous i18n guardrail exists for. Merged
-   * and de-duplicated, because a pull request that does both should report a
-   * key once.
+   * The code calls it, from the changed source files. Or the pull request
+   * changes it in **any** catalogue it touches — the source one, where a new
+   * English string arrives untranslated, or a target one, where an existing
+   * translation is edited and loses a placeholder. Merged and de-duplicated,
+   * because a pull request doing both must report a key once.
+   *
+   * A key changed only in a target locale is still audited against the source
+   * catalogue: that is what makes `missing-source` fire when somebody
+   * translates a key English does not define.
    */
-  const usedKeys = [
-    ...new Set([
-      ...distinctKeys(scan),
-      ...addedSourceKeys(
-        catalogues.catalogues[sourceLocale] ?? {},
-        args.baseSourceCatalogue,
-      ),
-    ]),
-  ];
+  const fromCatalogues = new Set<string>();
+  for (const [locale, headCatalogue] of Object.entries(catalogues.catalogues)) {
+    for (const key of changedCatalogueKeys(
+      headCatalogue,
+      args.baseCatalogues?.[locale],
+    )) {
+      fromCatalogues.add(key);
+    }
+  }
+
+  const usedKeys = [...new Set([...distinctKeys(scan), ...fromCatalogues])];
 
   return {
     report: auditI18n({
