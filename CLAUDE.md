@@ -406,6 +406,42 @@
   été relue**, d'où les tests e2e lancés avec les deux valeurs de
   `CLI_PERSONAL_TOKENS_LIVE`.
 
+  **La landing est rebâtie sur les patterns du template de référence** (#129,
+  2026-10-01) — en adaptant son implémentation plutôt qu'en approchant son
+  rendu. `components/landing/section.tsx` porte ce qui en vient : `Container`
+  est son `px-4 sm:px-6 lg:px-8`, dont le **troisième palier manquait** — entre
+  1024 et 1536 la gouttière restait à 24 px pendant que la colonne grandissait ;
+  `Section` est son `py-24 sm:py-32`, là où la page tournait à `py-20 sm:py-28` ;
+  `FeatureSplit` est le partage deux colonnes de `features-section.tsx`. Les
+  eyebrows de section deviennent des `Badge`.
+
+  Ecosystem est la section qui en avait le plus besoin : en-tête pleine largeur
+  au-dessus d'une grille 5/7, **638 px de haut pour ~400 px de contenu**, avec
+  ~500 px de colonne droite vide — la zone morte que §4.5.2 qualifie de défaut
+  et non de blanc. Passée en `FeatureSplit` : **638 → 555 px, même contenu**. La
+  bande de clôture a pris la forme centrée du template pour la même raison.
+
+  **L'en-tête centré n'est utilisé qu'une fois, sur Commitments.** §4.4 interdit
+  à deux sections adjacentes de partager leur signature ; centrer les sept
+  serait exactement le « document, pas une composition » qu'elle nomme. Vérifié
+  après chaque changement : les huit tuples *(colonnes, pleine largeur,
+  évidence)* restent distincts de leur voisin, et `section-rhythm.spec.ts` le
+  prouve.
+
+  **Le favicon existe enfin, et sa première version ne rendait rien.**
+  `app/icon.svg` reprend le mark à trois barres du header — mêmes rapports
+  100/75/50, valeurs toutes paires pour tomber sur des pixels entiers à 16 px.
+  La dégression passe par l'opacité d'une encre et non par les tokens
+  `primary`/`strong`/`line` : le troisième, un filet à `#d7dae0`, disparaît à
+  16 px sur blanc.
+
+  **Le piège vaut plus que le fichier : un commentaire XML ne peut pas contenir
+  de double tiret**, et le mien écrivait `--graphite-12`. Le SVG renvoyait
+  **200**, avec `image/svg+xml`, et obtenait sa balise `<link rel="icon">` — il
+  rendait un onglet vide. Vérifier que le lien est présent et correctement servi
+  ne prouve donc rien du rendu ; ce qui l'a montré est
+  `document.querySelector('parsererror')` dans le navigateur.
+
 - `apps/web` (propriétaire) — coquille applicative : barre latérale **256 px**
   (feuille latérale de 288 px sous 768 px, rail de 48 px repliée), barre
   supérieure 48 px, palette de commandes ⌘K, et la galerie `/design` qui rend
@@ -440,6 +476,52 @@
   périmés.** Il en reste **une**, `/[org]/billing`, et le test qui gardait la
   formule n'existe plus — il a été retiré avec les surfaces qu'il décrivait, au
   fil des PR #19 à #22, sans que ce paragraphe suive.
+
+  **Les grilles se dimensionnent sur leur colonne, plus sur la fenêtre** (#129).
+  `@container/main` est posé sur le `<main>` du layout racine — l'endroit exact
+  où le template de référence le pose. La raison est mesurable : à une fenêtre
+  de **768 px la barre latérale en prend 256**, donc la colonne de contenu fait
+  **512 px**, et aucun breakpoint viewport ne peut le voir. `/runs` rendait
+  **trois tuiles en travers de 464 px**. Le palier avait déjà été déplacé à la
+  main de `lg:` vers `md:` pour contourner le symptôme — contournement remplacé
+  par `@md/main` / `@3xl/main`, qui donnent une tuile à 390, **deux à 768**,
+  trois à 1440.
+
+  **Un utilitaire qui ne compile pas échoue en silence**, donc la vérification
+  porte sur le CSS servi et non sur la source : `@container main
+  (min-width:28rem)`, `(min-width:48rem)`, `(min-width:64rem)` et
+  `container-type:inline-size` y sont bien.
+
+  **Trois défauts trouvés par mesure, pas à l'œil.** `/review` coiffait ses
+  groupes de run en **13 px/500** alors que les lignes qu'il groupe sont en
+  `body` 14 — un titre sous son propre contenu, l'échec de §3.5 déjà corrigé
+  deux fois sur le site. `/[org]/usage` à 390 poussait sa toolbar **16 px hors
+  du panneau** : cause, le `px-4` ajouté avec le panneau lui-même ; `/runs`
+  affiche la même toolbar sans panneau et ne déborde pas, ce qui a désigné le
+  padding plutôt que la toolbar. Et `/[org]/start` laissait le titre d'étape
+  **s'effondrer à 1 px** en portant 68 px de texte — le détail (un chemin de
+  dépôt, un seul token insécable) ne pouvait pas rétrécir et le titre avait son
+  plancher retiré par `min-w-0` ; les deux sont désormais dans l'autre sens.
+
+  **`packages/ui` *est* du shadcn, et ce point mérite d'être écrit une fois.**
+  Le paquet dépend de `radix-ui` et ses primitives interactives sont bâties
+  dessus : `Button` sur `Slot`, `Dialog`, `Tabs`/`Avatar`/`Progress`/`Separator`,
+  `DropdownMenu`/`Popover`/`Tooltip`, `Select`, `Checkbox`/`RadioGroup`/`Switch`,
+  `Toast`. Les primitives « simples » — `Card`, `Table`, `Input`, `Badge`,
+  `Alert`, `Breadcrumb` — sont des div + Tailwind, **exactement comme chez
+  shadcn**, vérifié dans le template. Mesuré en lignes : ~3 150 d'architecture
+  shadcn contre ~980 de spécifique Layersky. Conclusion pratique : il n'y a pas
+  de migration à faire, et un composant « à reprendre du template » existe
+  presque toujours déjà sous un autre nom.
+
+  Une seule incohérence réelle en est sortie, et elle est corrigée : `Kbd`
+  existait, était exporté, et n'était utilisé nulle part pendant que
+  `app-topbar.tsx` réécrivait un `<kbd>` à la main. Les deux fichiers citaient
+  **la même mesure** — `text-secondary` à 11 px vaut 4,54:1 — et concluaient à
+  l'opposé ; la primitive appelait quatre centièmes au-dessus du seuil « une
+  coïncidence, pas une marge » et passait à `text-primary`, la copie le
+  reconnaissait et gardait `secondary`. Après bascule : **18,17:1 en clair,
+  16,58:1 en sombre.**
 
   `/runs`, `/runs/[id]`, `/locales`, `/ambiguity`, `/review`, `/[org]/projects`,
   `/[org]/projects/[project]`, `/[org]/tokens` et `/[org]/start` lisent Postgres
@@ -851,6 +933,25 @@ piège est que les trois projets se ressemblent sur cette page alors que deux
 seulement suivent `master` — un correctif à `apps/api` fusionné n'est pas un
 correctif en ligne. Constaté le 2026-08-23 : la PR #33 fusionnée, la dernière
 production de l'API datait encore de la veille.
+
+**Deux précisions sur cette commande, apprises en la lançant le 2026-10-01.**
+Elle part de la **racine du dépôt**, pas d'`apps/api` — `DEPLOYING.md:142` le
+dit, « so workspace dependencies resolve » — et avec `VERCEL_ORG_ID` et
+`VERCEL_PROJECT_ID` en préfixe. Et `--archive=tgz` **transporte bien la
+métadonnée Git** : `DEPLOYING.md` en doutait, puisque `VERCEL_GIT_COMMIT_SHA`
+est une variable du système Git ; le déploiement répond pourtant un SHA réel.
+
+**Le piège s'est reproduit, et la sonde qui le montre tient en une requête.**
+Après la fusion de #128 puis #129, la page racine servait encore « Localize
+Infra API ». Un HTML statique peut venir d'un CDN, donc ce n'est pas une
+preuve ; ce qui en est une est une réponse **générée** : un jeton `lit_` bien
+formé mais inexistant — le motif exige `lit_` plus exactement 43 caractères
+base64url, un jeton plus court tombe sur le 401 générique et ne prouve rien —
+atteint `auth.ts` et renvoyait l'ancien nom de produit. `/api/version`
+confirmait : `55b3e2c`, le commit de #100. Après déploiement : `4a6f347`, et
+les deux surfaces disent « Layersky ». Coût de la sonde : nul, le chemin est
+non authentifié et n'atteint aucun modèle.
+
 Ce sont les **trois** projets Vercel du dépôt. `services/github-app` reste une
 bibliothèque, consommée par `apps/api` ; elle n'a pas de déploiement propre.
 
@@ -1329,6 +1430,24 @@ qu'ils existent, parce que leur symptôme est **un succès**, jamais une erreur.
    et si un build a réécrit `.next` sous lui, la suite échoue partout pour des
    raisons sans rapport avec le diff, ou pire, passe sur du code qui n'est plus
    là. Tuer les ports 3210/3211 avant une campagne e2e.
+
+**Un troisième piège, et celui-là ne tient pas à l'outillage.** Le 2026-10-01
+une erreur de format a atteint une branche poussée et c'est CI qui l'a trouvée,
+alors que `npm run lint` la signalait en local depuis plusieurs tours. La cause
+était la façon de lancer le gate : `npm run lint` et `turbo run …` enchaînés
+dans une seule commande terminée par un `tail`/`Select-Object -Last 2`, dont les
+dernières lignes sont **toujours celles de turbo**. Le verdict de lint défilait
+sans être lu, et « 0 erreur » a été rapporté depuis une sortie que personne
+n'avait regardée.
+
+La règle qui en sort, et qui vaut au-delà de ce cas : **un gate dont on ne lit
+pas le résultat n'est pas un gate.** Lancer chaque commande séparément, ou lire
+assez de lignes pour voir le verdict de chacune — c'est le même motif que le
+cache turbo et le serveur resté vivant, avec un humain à la place de l'outil.
+
+Détail au passage : les fins de ligne comptent. Biome signalait trois fichiers
+dans l'arbre de travail (CRLF) contre un seul en CI (LF) ; un seul écart était
+réel, les deux autres étaient de la normalisation que git absorbe.
 
 CI (`.github/workflows/ci.yml`) fait tourner les mêmes gates, avec `npm ci`
 dans les deux jobs.
