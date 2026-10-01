@@ -1,8 +1,4 @@
-import {
-  Container,
-  FeatureSplit,
-  Section,
-} from '@/components/landing/section';
+import { Container, FeatureSplit, Section } from '@/components/landing/section';
 import { SectionHeading } from '@/components/landing/section-heading';
 import type * as React from 'react';
 
