@@ -208,12 +208,28 @@ export default async function StartPage({
                 <span className="font-mono text-caption text-tertiary">
                   {index + 1}
                 </span>
-                <span className="min-w-0 flex-1 text-body font-medium text-primary">
+                {/*
+                 * The title no longer carries `min-w-0`, and the detail now
+                 * does. Which of the two yields was backwards.
+                 *
+                 * `detail` is a repository path — one unbreakable 44-character
+                 * token — and it had no way to shrink, while the title was the
+                 * only flexible item *and* had its floor removed. The title
+                 * therefore absorbed all of the shrinking: measured at a 768
+                 * viewport it rendered 1px wide holding 68px of text, and step
+                 * 3 read "Connect / a maxencerousseau38-prog/... / repository"
+                 * with its own words broken around the path.
+                 *
+                 * Without `min-w-0` the title will not go below its longest
+                 * word, which is what a step title should do; the path
+                 * truncates instead, and the project page shows it in full.
+                 */}
+                <span className="flex-1 text-body font-medium text-primary">
                   {step.title}
                 </span>
                 {step.detail ? (
                   <span
-                    className="font-mono text-caption text-tertiary"
+                    className="min-w-0 truncate font-mono text-caption text-tertiary"
                     data-testid="step-detail"
                   >
                     {step.detail}

@@ -1,3 +1,4 @@
+import { Container, Section } from '@/components/landing/section';
 import { Check, GitPullRequest, X } from 'lucide-react';
 
 /**
@@ -56,14 +57,14 @@ const QUIET = [
 
 export function ContinuousCheck() {
   return (
-    <section
+    <Section
+      ground="inverse"
       aria-label="The check Layersky puts on a pull request"
-      className="border-y border-subtle bg-primary"
     >
       {/* `sm:py-28`, the step every other section on this page uses. It shipped
           at `sm:py-24` in the tranche that added it — the one genuine rhythm
           inconsistency on the landing, and it was mine. */}
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28">
+      <Container>
         <div className="grid gap-10 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start lg:gap-16">
           <div>
             <p className="text-eyebrow font-medium uppercase text-inverse/60">
@@ -170,7 +171,7 @@ export function ContinuousCheck() {
           Pull request #14 on our i18next fixture, 29 September 2026. The check
           is the product, not a screenshot of one.
         </p>
-      </div>
-    </section>
+      </Container>
+    </Section>
   );
 }

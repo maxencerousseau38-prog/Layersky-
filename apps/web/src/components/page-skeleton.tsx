@@ -80,13 +80,14 @@ export function PageHeaderSkeleton({ meta = 2 }: { meta?: number }) {
 export function MetricGridSkeleton({ tiles = 3 }: { tiles?: number }) {
   return (
     <div
-      // The same steps `MetricGrid` uses. A skeleton that reflows at a
+      // The same steps `MetricGrid` uses, including the move from viewport
+      // breakpoints to `@container/main`. A skeleton that reflows at a
       // different width than the thing it stands in for is a layout jump that
       // only appears between two breakpoints, which is where nobody looks.
       className={cn(
-        'mt-6 grid gap-3 sm:grid-cols-2',
-        tiles === 3 && 'md:grid-cols-3',
-        tiles === 4 && 'md:grid-cols-2 xl:grid-cols-4',
+        'mt-6 grid gap-3 @md/main:grid-cols-2',
+        tiles === 3 && '@3xl/main:grid-cols-3',
+        tiles === 4 && '@5xl/main:grid-cols-4',
       )}
     >
       {Array.from({ length: tiles }, (_, i) => (

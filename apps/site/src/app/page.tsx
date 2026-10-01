@@ -5,6 +5,7 @@ import { ContinuousCheck } from '@/components/landing/continuous-check';
 import { Ecosystem } from '@/components/landing/ecosystem';
 import { Hero } from '@/components/landing/hero';
 import { HowItWorks } from '@/components/landing/how-it-works';
+import { Container, Section } from '@/components/landing/section';
 import {
   CLI_PERSONAL_TOKENS_LIVE,
   CLI_PUBLISHED_TO_NPM,
@@ -60,27 +61,41 @@ export default function HomePage() {
        * escalation, what the CLI leaves alone and a board naming what is not
        * built. Conversion is asked for after the value, never before it.
        */}
-      <section className="border-t border-subtle bg-primary">
-        <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28">
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-end lg:gap-16">
+      <Section ground="inverse" className="border-b-0">
+        <Container>
+          {/*
+           * The template's closing CTA: `mx-auto max-w-4xl` centred, heading
+           * over a centred action row (`cta-section.tsx`).
+           *
+           * This was a 26rem/1fr split with the action in the right column,
+           * and at 1440 that left the band around 140px taller than its
+           * content with a hole under the heading — §4.5.2's dead zone, on the
+           * one section whose whole job is to be acted on. Centred, the band
+           * also bookends the hero, which is centred too; the comment below
+           * argued the opposite and described a shape the page no longer had.
+           */}
+          <div className="mx-auto max-w-4xl text-center">
             <div>
-              <p className="text-eyebrow font-medium uppercase text-inverse/60">
+              {/* A `Badge`, like every other section eyebrow on the page.
+                  `Badge` paints a light ground, so on the inverse band it is
+                  re-toned rather than left to disappear. */}
+              <span className="inline-flex items-center rounded-sm border border-inverse/25 bg-inverse/10 px-1.5 py-0.5 text-caption font-medium leading-4 text-inverse/80">
                 Your turn
-              </p>
-              <h2 className="mt-3 max-w-[18ch] font-display text-display font-semibold text-inverse sm:text-display-lg">
+              </span>
+              <h2 className="mt-4 text-balance font-display text-display font-semibold text-inverse sm:text-display-lg">
                 Now point it at yours
               </h2>
               {/* This said extraction "writes a file you own" before anything
                   leaves the machine. The CLI writes nothing until a token is
                   configured, and with one it goes straight on to translate —
                   so the honest version is about what is sent, not when. */}
-              <p className="mt-4 max-w-[46ch] text-prose text-inverse/70">
+              <p className="mx-auto mt-5 max-w-[52ch] text-prose text-inverse/70">
                 Extraction runs on your machine. What leaves it is the strings
                 and the code around them, sent to the API you point it at.
               </p>
             </div>
 
-            <div className="lg:pb-1">
+            <div className="mt-10">
               {/*
                * Both buttons are re-toned for an inverse band.
                *
@@ -111,7 +126,7 @@ export default function HomePage() {
                * button opens a dialog rather than doing the thing it names, so
                * it stays an outline and the fold keeps the one fill.
                */}
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <GatedAction
                   variant="secondary"
                   className="w-full border-inverse/30 bg-transparent text-inverse hover:bg-inverse/10 active:bg-inverse/15 sm:w-auto"
@@ -119,7 +134,7 @@ export default function HomePage() {
                   Run it on your repository
                 </GatedAction>
               </div>
-              <p className="mt-5 text-small text-inverse/60">
+              <p className="mx-auto mt-5 max-w-[60ch] text-small text-inverse/60">
                 {/* "The CLI runs from a clone today" stood here for two weeks
                     after the package reached npm, because it was prose rather
                     than a read of the flag the hero and /docs already use. */}
@@ -145,8 +160,8 @@ export default function HomePage() {
               </p>
             </div>
           </div>
-        </div>
-      </section>
+        </Container>
+      </Section>
     </>
   );
 }

@@ -89,7 +89,7 @@ export function SiteHeader() {
         ],
       )}
     >
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-8 px-4 sm:px-6">
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-8 px-4 sm:px-6 lg:px-8">
         {/* The one tracking value on the site that is not carried by its type
             step. The wordmark is `body`-sized, and `body` is every paragraph,
             button and table cell in both apps — binding a wordmark's fit to it

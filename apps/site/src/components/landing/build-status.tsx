@@ -1,3 +1,4 @@
+import { Container, Section } from '@/components/landing/section';
 import { SectionHeading } from '@/components/landing/section-heading';
 import { cn } from '@localize-infra/ui';
 import { Check, Circle, Minus } from 'lucide-react';
@@ -176,8 +177,8 @@ const WORKING = ITEMS.filter((item) => item.state === 'working').length;
 
 export function BuildStatus() {
   return (
-    <section className="border-t border-subtle bg-surface/40">
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28">
+    <Section ground="surface" className="border-t border-b-0">
+      <Container>
         <div className="grid gap-10 lg:grid-cols-12 lg:gap-16">
           <SectionHeading
             className="lg:col-span-4"
@@ -262,7 +263,7 @@ export function BuildStatus() {
             </ul>
           </div>
         </div>
-      </div>
-    </section>
+      </Container>
+    </Section>
   );
 }

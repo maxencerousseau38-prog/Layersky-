@@ -6,7 +6,7 @@ import {
   EXAMPLE_PR_URL,
   INSTALL_COMMAND,
 } from '@/lib/constants';
-import { Button, CopyCommand } from '@localize-infra/ui';
+import { Badge, Button, CopyCommand } from '@localize-infra/ui';
 import { GitPullRequest } from 'lucide-react';
 import Link from 'next/link';
 
@@ -28,7 +28,11 @@ import Link from 'next/link';
 export function Hero() {
   return (
     <>
-      <section className="mx-auto max-w-7xl px-4 pb-8 pt-10 sm:px-6 sm:pb-10 sm:pt-14">
+      {/* The template's hero rhythm: `pt-16 sm:pt-20 pb-16`. This ran
+          `pt-10 sm:pt-14 pb-8`, which put the h1 40px under a 64px sticky bar
+          and gave the fold no room to breathe above the product's first
+          sentence. */}
+      <section className="mx-auto max-w-7xl px-4 pb-16 pt-16 sm:px-6 sm:pt-20 lg:px-8">
         {/*
          * An asymmetric split, not a headline with a void beside it.
          *
@@ -71,7 +75,7 @@ export function Hero() {
          * is where the reference template puts its secondary element, and the
          * run artifact keeps the full-bleed band directly under it.
          */}
-        <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+        <div className="mx-auto flex max-w-4xl flex-col items-center text-center">
           <div className="flex flex-col items-center">
             {/*
              * The positioning caught up with the product.
@@ -87,9 +91,17 @@ export function Hero() {
              * alone undersold the half that runs on every push and needs
              * nobody to remember it.
              */}
-            <p className="text-eyebrow font-medium uppercase text-tertiary">
-              Git-native i18n infrastructure
-            </p>
+            {/*
+             * A `Badge`, which is how the template opens its hero
+             * (`hero-section.tsx`: `<Badge variant="outline" className="px-4
+             * py-2">` above the headline). This was a letter-spaced paragraph,
+             * which reads as the first line of the h1 rather than as a label
+             * on it — the badge has an edge, so the eye separates them.
+             *
+             * `tone="neutral"` is the template's `outline`: a bordered chip
+             * with no icon, which is right for a label that reports no state.
+             */}
+            <Badge tone="neutral">Git-native i18n infrastructure</Badge>
 
             {/*
              * 500, not 600, and only at this step.
@@ -235,8 +247,18 @@ export function Hero() {
             <p className="text-eyebrow font-medium uppercase text-tertiary">
               From your terminal
             </p>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5 xl:mt-3 xl:flex-col xl:items-stretch xl:gap-3">
-              <div className="w-full sm:max-w-md xl:max-w-none">
+            {/*
+              Stacked at every width, which it should have been all along.
+
+              This read `sm:flex-row … xl:flex-col`: a row from 640 to 1279,
+              then a column again. The panel is capped at `max-w-[34rem]` and
+              the command inside it at `max-w-md`, so the row never had more
+              than ~80px left for the sentence beside it — measured at 768,
+              where it wrapped at three words a line. A row that only fits
+              because nothing else is in it is not a row.
+            */}
+            <div className="mt-3 flex flex-col gap-3">
+              <div className="w-full">
                 <CopyCommand command={INSTALL_COMMAND} />
               </div>
               {/* Both halves of this sentence come from CLI_PUBLISHED_TO_NPM,

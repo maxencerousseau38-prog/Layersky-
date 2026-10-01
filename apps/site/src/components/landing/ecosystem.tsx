@@ -1,3 +1,8 @@
+import {
+  Container,
+  FeatureSplit,
+  Section,
+} from '@/components/landing/section';
 import { SectionHeading } from '@/components/landing/section-heading';
 import type * as React from 'react';
 
@@ -124,6 +129,17 @@ const MARKS: Mark[] = [
 const INTEGRATION = MARKS.find((m) => m.name === 'GitHub') as Mark;
 const UNTOUCHED = MARKS.filter((m) => m.name !== 'GitHub');
 
+/**
+ * One mark in the ecosystem lists.
+ *
+ * `integration` is the template's feature row from `features-section.tsx`: a
+ * `group` that tints on hover, a bordered icon box, a title and one line of
+ * description. The previous version was a bordered card per row, which gave a
+ * two-item list the weight of a pricing table.
+ *
+ * `untouched` stays a bare inline mark — those rows carry no description and
+ * are read as a set, not individually.
+ */
 function Logo({
   mark,
   tone = 'untouched',
@@ -133,117 +149,145 @@ function Logo({
   tone?: 'integration' | 'untouched';
   children?: React.ReactNode;
 }) {
-  return (
-    <li
+  const glyph = (
+    <svg
+      viewBox={mark.viewBox ?? '0 0 24 24'}
+      aria-hidden="true"
       className={
         tone === 'integration'
-          ? 'flex items-start gap-3 rounded-lg border border-line bg-canvas px-4 py-3.5'
-          : 'group flex shrink-0 items-center gap-2.5'
+          ? 'size-4 fill-current text-primary'
+          : 'size-4 shrink-0 fill-current text-tertiary transition-colors duration-(--duration-standard) group-hover:text-secondary motion-reduce:transition-none'
       }
     >
-      <svg
-        viewBox={mark.viewBox ?? '0 0 24 24'}
-        aria-hidden="true"
-        className={
-          tone === 'integration'
-            ? 'mt-0.5 size-5 shrink-0 fill-current text-primary'
-            : 'size-4 shrink-0 fill-current text-tertiary transition-colors duration-(--duration-standard) group-hover:text-secondary motion-reduce:transition-none'
-        }
-      >
-        {mark.path}
-      </svg>
-      {tone === 'integration' ? (
-        <span className="min-w-0">
-          <span className="block text-body font-medium text-primary">
-            {mark.name}
-          </span>
-          <span className="mt-0.5 block text-small leading-5 text-secondary">
-            {children}
-          </span>
-        </span>
-      ) : (
+      {mark.path}
+    </svg>
+  );
+
+  if (tone === 'untouched') {
+    return (
+      <li className="group flex shrink-0 items-center gap-2.5">
+        {glyph}
         <span className="text-body text-tertiary transition-colors duration-(--duration-standard) group-hover:text-secondary motion-reduce:transition-none">
           {mark.name}
         </span>
-      )}
+      </li>
+    );
+  }
+
+  return (
+    <li className="group flex items-start gap-3 rounded-lg p-2 transition-colors duration-(--duration-micro) hover:bg-canvas motion-reduce:transition-none">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-subtle bg-canvas"
+      >
+        {glyph}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-body font-medium text-primary">
+          {mark.name}
+        </span>
+        <span className="mt-1 block text-small leading-6 text-secondary">
+          {children}
+        </span>
+      </span>
     </li>
   );
 }
 
 export function Ecosystem() {
   return (
-    <section
-      aria-labelledby="ecosystem"
-      className="border-y border-subtle bg-surface/40 py-20 sm:py-28"
-    >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <SectionHeading
-          id="ecosystem"
-          eyebrow="Compatibility"
-          title="Nothing else in your stack has to change"
-        >
-          <p className="mt-4 text-prose text-secondary">
-            The CLI reads your repository and writes locale files back to it.
-            Your framework, your host and your database carry on exactly as they
-            were.{' '}
-            <strong className="font-medium text-primary">
-              GitHub is the one integration
-            </strong>{' '}
-            — it is where the pull request goes. None of these projects endorse
-            this one.
-          </p>
-        </SectionHeading>
-      </div>
-
-      {/*
-       * Two named groups, not a scrolling logo strip.
-       *
-       * The copy always said GitHub is the only integration and that nothing
-       * here endorses this product — but a row of brand marks sliding past is
-       * read as "trusted by" before anyone reaches a sentence, so the device
-       * was working against its own caption. Worse, it made the one fact this
-       * section exists to convey — what the tool touches versus what it leaves
-       * alone — the one thing the layout did not show.
-       *
-       * Stated as two groups it is information rather than decoration: a
-       * visitor learns the integration surface is exactly one system, and that
-       * adopting this costs them no other change.
-       */}
-      <div className="mx-auto mt-10 grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-12 lg:gap-12">
-        <div className="lg:col-span-5">
-          <h3 className="text-eyebrow font-medium uppercase text-tertiary">
-            Integrates with
-          </h3>
-          <ul
-            aria-label="Systems this integrates with"
-            className="mt-4 flex flex-col gap-3"
+    <Section ground="surface" labelledBy="ecosystem">
+      <Container>
+        {/*
+         * The template's two-column feature split, which this section needed
+         * more than any other on the page.
+         *
+         * It ran as a full-width heading over a 5/7 grid, and at 1440 that
+         * left roughly 500px of empty right-hand column beside the heading and
+         * another band of nothing under a one-item list — the dead zone
+         * DESIGN.md §4.5.2 calls a defect rather than whitespace. Measured on
+         * the section: 638px tall, around 400px of it carrying anything.
+         *
+         * `FeatureSplit` is `features-section.tsx`'s own shape: the argument on
+         * one side, the evidence on the other, both vertically centred. The
+         * heading column now has a reason to be narrow and the lists have the
+         * width they were short of.
+         */}
+        <FeatureSplit>
+          <SectionHeading
+            id="ecosystem"
+            eyebrow="Compatibility"
+            title="Nothing else in your stack has to change"
+            className="max-w-none"
           >
-            <Logo mark={INTEGRATION} tone="integration">
-              Where the pull request goes. Installed as a GitHub App you
-              control.
-            </Logo>
-          </ul>
-        </div>
+            <p className="mt-4 text-prose text-secondary">
+              The CLI reads your repository and writes locale files back to it.
+              Your framework, your host and your database carry on exactly as
+              they were.{' '}
+              <strong className="font-medium text-primary">
+                GitHub is the one integration
+              </strong>{' '}
+              — it is where the pull request goes. None of these projects
+              endorse this one.
+            </p>
+          </SectionHeading>
 
-        <div className="lg:col-span-7">
-          <h3 className="text-eyebrow font-medium uppercase text-tertiary">
-            Detected, then left alone
-          </h3>
-          <ul
-            aria-label="Technologies this works alongside"
-            className="mt-4 flex flex-wrap gap-x-6 gap-y-3"
-          >
-            {UNTOUCHED.map((mark) => (
-              <Logo key={mark.name} mark={mark} />
-            ))}
-          </ul>
-          <p className="mt-4 max-w-[60ch] text-small leading-6 text-tertiary">
-            The CLI recognises these where they are present and writes nothing
-            to them. Your framework, host and database carry on exactly as they
-            were.
-          </p>
-        </div>
-      </div>
-    </section>
+          {/*
+           * Two named groups, not a scrolling logo strip.
+           *
+           * The copy always said GitHub is the only integration and that
+           * nothing here endorses this product — but a row of brand marks
+           * sliding past is read as "trusted by" before anyone reaches a
+           * sentence, so the device was working against its own caption.
+           * Worse, it made the one fact this section exists to convey — what
+           * the tool touches versus what it leaves alone — the one thing the
+           * layout did not show.
+           *
+           * Stated as two groups it is information rather than decoration.
+           */}
+          <div className="flex flex-col gap-8">
+            <div>
+              <h3 className="text-eyebrow font-medium uppercase text-tertiary">
+                Integrates with
+              </h3>
+              {/*
+               * The list keeps an edge. The hover row this borrowed from the
+               * template is written for a list of four to six; with exactly
+               * one integration it read as an orphan floating on the band, so
+               * the border moves from the row to the list that holds it.
+               */}
+              <ul
+                aria-label="Systems this integrates with"
+                className="mt-4 rounded-lg border border-line bg-canvas p-2"
+              >
+                <Logo mark={INTEGRATION} tone="integration">
+                  Where the pull request goes. Installed as a GitHub App you
+                  control.
+                </Logo>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-eyebrow font-medium uppercase text-tertiary">
+                Detected, then left alone
+              </h3>
+              <ul
+                aria-label="Technologies this works alongside"
+                className="mt-4 flex flex-wrap gap-x-6 gap-y-3"
+              >
+                {UNTOUCHED.map((mark) => (
+                  <Logo key={mark.name} mark={mark} />
+                ))}
+              </ul>
+              <p className="mt-4 max-w-[60ch] text-small leading-6 text-tertiary">
+                The CLI recognises these where they are present and writes
+                nothing to them. Your framework, host and database carry on
+                exactly as they were.
+              </p>
+            </div>
+          </div>
+        </FeatureSplit>
+      </Container>
+    </Section>
   );
 }

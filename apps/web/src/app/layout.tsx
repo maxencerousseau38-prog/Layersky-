@@ -187,7 +187,26 @@ export default async function RootLayout({
                       taking it from `usePathname` there would relabel the bar
                       for a workspace the reader is not a member of. */}
                   <AppTopbar orgSlug={shell?.orgSlug ?? null} />
-                  <main id="main" className="flex-1 overflow-y-auto">
+                  {/*
+                   * `@container/main`, the template's own root for container
+                   * queries (`(dashboard)/layout.tsx`).
+                   *
+                   * This is the fix for a defect that was patched by hand
+                   * once already. At a 768 viewport the sidebar takes 256px,
+                   * so this column is **512px** — and every grid inside it was
+                   * sized by *viewport* breakpoints, which cannot see that.
+                   * Measured before this line existed: `/runs` rendered three
+                   * metric tiles across 464px, about 150px each.
+                   *
+                   * Naming the container here lets a page ask how much room it
+                   * actually has rather than how wide the window is. Nothing
+                   * else changes: `@container` only establishes a containment
+                   * context for inline-size, and `main` already owns its width.
+                   */}
+                  <main
+                    id="main"
+                    className="@container/main flex-1 overflow-y-auto"
+                  >
                     {children}
                   </main>
                 </SidebarInset>
