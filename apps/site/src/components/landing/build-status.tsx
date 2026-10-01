@@ -177,7 +177,7 @@ const WORKING = ITEMS.filter((item) => item.state === 'working').length;
 export function BuildStatus() {
   return (
     <section className="border-t border-subtle bg-surface/40">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28">
         <div className="grid gap-10 lg:grid-cols-12 lg:gap-16">
           <SectionHeading
             className="lg:col-span-4"

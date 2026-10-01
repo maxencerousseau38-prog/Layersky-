@@ -176,7 +176,7 @@ export function Ecosystem() {
       aria-labelledby="ecosystem"
       className="border-y border-subtle bg-surface/40 py-20 sm:py-28"
     >
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <SectionHeading
           id="ecosystem"
           eyebrow="Compatibility"
@@ -209,7 +209,7 @@ export function Ecosystem() {
        * visitor learns the integration surface is exactly one system, and that
        * adopting this costs them no other change.
        */}
-      <div className="mx-auto mt-10 grid max-w-6xl gap-8 px-4 sm:px-6 lg:grid-cols-12 lg:gap-12">
+      <div className="mx-auto mt-10 grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-12 lg:gap-12">
         <div className="lg:col-span-5">
           <h3 className="text-eyebrow font-medium uppercase text-tertiary">
             Integrates with

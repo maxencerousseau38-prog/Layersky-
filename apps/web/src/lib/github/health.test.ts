@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { explainGitHubFailure } from './health.js';
 
 /**
@@ -99,5 +99,95 @@ describe('the provider’s own words', () => {
       const { problem } = explainGitHubFailure(thrown);
       expect(problem.length, String(thrown)).toBeGreaterThan(20);
     }
+  });
+});
+
+/*
+ * `readInstallationRepositories` is exercised through a stub of the module it
+ * calls, because the interesting inputs are failures a healthy GitHub account
+ * cannot be asked to produce: a deleted installation, an expired App key, a
+ * rate limit. Each is a thrown Octokit-shaped error, which is exactly what the
+ * real client raises.
+ */
+describe('readInstallationRepositories', () => {
+  const httpError = (status: number, message = 'Not Found') =>
+    Object.assign(new Error(message), { status });
+
+  async function read(throws: unknown) {
+    vi.resetModules();
+    vi.doMock('./repositories', () => ({
+      listInstallationRepositories: async () => {
+        if (throws) throw throws;
+        return [
+          {
+            owner: 'acme',
+            name: 'shop',
+            fullName: 'acme/shop',
+            defaultBranch: 'main',
+            private: false,
+          },
+        ];
+      },
+    }));
+    const mod = await import('./health.js');
+    return mod.readInstallationRepositories('org-1');
+  }
+
+  it('returns the repositories when GitHub answers', async () => {
+    const access = await read(null);
+    expect(access.ok).toBe(true);
+    if (access.ok) expect(access.repositories).toHaveLength(1);
+  });
+
+  /*
+   * The case this function exists for. Before it, a 404 propagated out of a
+   * server component and the whole project page became an HTTP 500 with an
+   * empty body — observed after the App was reinstalled and the stored
+   * installation stopped existing.
+   */
+  it('does not throw when the installation is gone', async () => {
+    const access = await read(httpError(404));
+    expect(access.ok).toBe(false);
+    if (!access.ok) {
+      expect(access.reconnect).toBe(true);
+      expect(access.problem).toMatch(/does not recognise this installation/i);
+    }
+  });
+
+  /*
+   * The guard that keeps the advice honest. None of these is fixed by
+   * reconnecting: 401 and 403 are the *operator's* App credentials, 429 is a
+   * rate limit, 5xx is GitHub itself. Offering "Reconnect GitHub" would send a
+   * customer to redo work that was never broken.
+   */
+  it.each([401, 403, 429, 500, 502, 503])(
+    'does not offer reconnect for %i',
+    async (status) => {
+      const access = await read(httpError(status, 'Boom'));
+      expect(access.ok).toBe(false);
+      if (!access.ok) expect(access.reconnect).toBe(false);
+    },
+  );
+
+  /** A transport failure carries no status, and is not an installation problem. */
+  it('does not offer reconnect for a network failure', async () => {
+    const access = await read(new Error('fetch failed'));
+    expect(access.ok).toBe(false);
+    if (!access.ok) {
+      expect(access.reconnect).toBe(false);
+      expect(access.problem).toMatch(/not evidence that it is broken/i);
+    }
+  });
+
+  /** An empty grant is success, not a failure: the call worked. */
+  it('reports an installation with no repositories as ok and empty', async () => {
+    vi.resetModules();
+    vi.doMock('./repositories', () => ({
+      listInstallationRepositories: async () => [],
+    }));
+    const mod = await import('./health.js');
+    const access = await mod.readInstallationRepositories('org-1');
+    expect(access.ok).toBe(true);
+    if (access.ok) expect(access.repositories).toEqual([]);
   });
 });

@@ -43,8 +43,8 @@ export function Activation({ funnel }: { funnel: Funnel }) {
       ) : (
         <p className="mt-3 max-w-[64ch] text-small leading-6 text-secondary">
           No pull request yet. Connect a repository and run a localization to
-          open the first one — that is the moment Localize Infra has actually
-          done something for you.
+          open the first one — that is the moment Layersky has actually done
+          something for you.
         </p>
       )}
 

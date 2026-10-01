@@ -19,6 +19,7 @@ import { GitHubConnection } from './github-connection';
 import { GitHubResult } from './github-result';
 import { NewProject } from './new-project';
 import { ProjectList } from './project-list';
+import { WorkspaceTabs } from './workspace-tabs';
 
 export const metadata: Metadata = { title: 'Projects' };
 
@@ -97,48 +98,26 @@ export default async function ProjectsPage({
       <GitHubResult reason={github} />
 
       {/*
-        The page leads with its subject.
-        ────────────────────────────────
-        It used to open with the GitHub panel, then two link paragraphs, then an
-        activation funnel, and reach the projects fourth — three bordered
-        surfaces at one weight before the thing the page is named after. §4.6
-        prices vertical density; the cost here was ordering, paid on every visit
-        by every reader who already finished setup.
-
-        Setup now sits below the work, and the activation funnel below that.
-        Nothing is deleted: every number the page reported, it still reports.
-      */}
-      {projects.length === 0 ? (
-        // Names what is missing and offers exactly one way to create it
-        // (DESIGN.md §8).
-        <div className="mt-8 rounded-lg border border-line bg-surface/40 px-6 py-12 text-center">
-          <p className="text-subtitle font-semibold text-primary">
-            No projects yet
-          </p>
-          <p className="mx-auto mt-2 max-w-[46ch] text-small leading-6 text-secondary">
-            A project is one repository and the locales it ships. Create one to
-            connect a repository and run your first extraction.
-          </p>
-          <div className="mt-6 flex justify-center">
-            <NewProject orgSlug={org} />
-          </div>
-        </div>
-      ) : (
-        <ProjectList orgSlug={org} projects={projects} />
-      )}
-
-      {/*
-        One line where there were two paragraphs.
-        ─────────────────────────────────────────
+        One line where there were two paragraphs, and now above the work
+        rather than below it.
+        ────────────────────────────────────────────────────────────────
         `Working from the command line?` and `Usage —` were separate blocks of
         body copy, each carrying a link and an explanation, stacked between
         panels. §9 charges rent for chrome on every screen forever, and prose is
         the most expensive way to offer a link. Same destinations, same
         conditions, one scannable row.
+
+        It sat under the project list until this pass, which put "follow the
+        guided path to your first pull request" — the pointer written for a
+        workspace that has not got anywhere yet — below however many projects
+        that workspace happens to have. Measured at twelve, that was y=1192.
+        These two links are workspace-scoped, not project-scoped, and they are
+        deliberately outside the tabs below: whichever tab is open, they are
+        reachable.
       */}
       <nav
         aria-label="Workspace"
-        className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-subtle pt-4 text-small"
+        className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-small"
       >
         {funnel.activated ? (
           <Link
@@ -164,14 +143,55 @@ export default async function ProjectsPage({
         </Link>
       </nav>
 
-      <GitHubConnection
-        organizationId={organization.id}
-        appSlug={appSlug}
-        appOrigin={appOrigin}
-        connected={installation}
-      />
+      {/*
+        The page leads with its subject.
+        ────────────────────────────────
+        It used to open with the GitHub panel, then two link paragraphs, then an
+        activation funnel, and reach the projects fourth — three bordered
+        surfaces at one weight before the thing the page is named after. §4.6
+        prices vertical density; the cost here was ordering, paid on every visit
+        by every reader who already finished setup.
 
-      <Activation funnel={funnel} />
+        Setup is now a tab rather than a position, for the reason
+        `workspace-tabs.tsx` sets out: "below the work" stops being a location
+        once the work is long. Nothing is deleted: every number the page
+        reported, it still reports.
+      */}
+      <WorkspaceTabs
+        githubConnected={installation !== null}
+        projectCount={projects.length}
+        projects={
+          projects.length === 0 ? (
+            // Names what is missing and offers exactly one way to create it
+            // (DESIGN.md §8).
+            <div className="mt-2 rounded-lg border border-line bg-surface/40 px-6 py-12 text-center">
+              <p className="text-subtitle font-semibold text-primary">
+                No projects yet
+              </p>
+              <p className="mx-auto mt-2 max-w-[46ch] text-small leading-6 text-secondary">
+                A project is one repository and the locales it ships. Create one
+                to connect a repository and run your first extraction.
+              </p>
+              <div className="mt-6 flex justify-center">
+                <NewProject orgSlug={org} />
+              </div>
+            </div>
+          ) : (
+            <ProjectList orgSlug={org} projects={projects} />
+          )
+        }
+        setup={
+          <>
+            <GitHubConnection
+              organizationId={organization.id}
+              appSlug={appSlug}
+              appOrigin={appOrigin}
+              connected={installation}
+            />
+            <Activation funnel={funnel} />
+          </>
+        }
+      />
     </Page>
   );
 }

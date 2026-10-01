@@ -3,7 +3,12 @@
 import { SampleChip } from '@/components/sample';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { ALL_ROUTES, resolveRoute } from '@/lib/nav';
+import {
+  ALL_ROUTES,
+  INTERNAL_NAV,
+  resolveRoute,
+  workspaceNav,
+} from '@/lib/nav';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -23,7 +28,6 @@ import {
   // scheme do not each invent a glyph for it.
   Contrast,
   GitBranch,
-  GitPullRequest,
   Monitor,
   Moon,
   Search,
@@ -40,18 +44,57 @@ import * as React from 'react';
  * trigger below 1024px. There is no global "New" button: creation happens in
  * the terminal, and a prominent web CTA would contradict the product's shape.
  */
-export function AppTopbar() {
+export function AppTopbar({
+  /**
+   * The reader's validated workspace, resolved in the root layout against
+   * their memberships — never the slug in the address bar. It is what lets the
+   * breadcrumb name `/{org}/projects`, and passing it rather than deriving it
+   * here is the whole reason a non-member cannot make this bar label a
+   * workspace they cannot see.
+   */
+  orgSlug,
+}: { orgSlug: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const [paletteOpen, setPaletteOpen] = React.useState(false);
 
   useCommandPaletteHotkey(() => setPaletteOpen((open) => !open));
 
-  const { route: current, detail } = resolveRoute(pathname);
+  const { route: current, detail } = resolveRoute(pathname, orgSlug);
 
   const items: CommandItem[] = React.useMemo(
     () => [
-      ...ALL_ROUTES.map((route) => ({
+      /*
+       * The workspace's own surfaces, first, because they are where the work
+       * is. Absent entirely for a reader with no workspace: an entry that
+       * needs a slug cannot be offered without one.
+       */
+      ...(orgSlug ? workspaceNav(orgSlug) : []).map((route) => ({
+        id: route.href,
+        label: route.label,
+        section: 'Workspace',
+        icon: route.icon,
+        keywords: route.keywords,
+        onSelect: () => router.push(route.href),
+      })),
+
+      /*
+       * `/design` is filtered out, and this is the last place it was still
+       * advertised.
+       *
+       * `INTERNAL_NAV` exists so the gallery is reachable and unlisted, and
+       * the sidebar honours that. `ALL_ROUTES` folds it back in — which is
+       * right for the breadcrumb, because a reader who opens `/design`
+       * directly still needs to be told where they are, and wrong for this
+       * list, which is a menu a customer opens with ⌘K.
+       *
+       * The route is untouched: typing the URL still works, and so does the
+       * breadcrumb on it. Only the advertisement is gone.
+       */
+      ...ALL_ROUTES.filter(
+        (route) =>
+          !INTERNAL_NAV.some((internal) => internal.href === route.href),
+      ).map((route) => ({
         id: route.href,
         label: route.label,
         section: 'Navigation',
@@ -137,20 +180,25 @@ export function AppTopbar() {
             '_blank',
           ),
       },
-      {
-        id: 'help-pr',
-        label: 'See an example pull request',
-        section: 'Help',
-        icon: GitPullRequest,
-        keywords: 'output diff deliverable',
-        onSelect: () =>
-          window.open(
-            'https://github.com/maxencerousseau38-prog/localize-infra-fixture-vite/pull/1',
-            '_blank',
-          ),
-      },
+      /*
+       * "See an example pull request" is gone, and it was a 404 for every
+       * reader.
+       *
+       * It opened `localize-infra-fixture-vite/pull/1`. That repository is
+       * private, so the link resolved for the owner and for nobody else —
+       * the identical defect CLAUDE.md records on the landing page, where it
+       * survived four copies because everyone who checked was signed in to
+       * GitHub as the owner. The site's fix was `EXAMPLE_PR_URL = null` plus
+       * an e2e guard forbidding links into the fixture; `apps/web` was never
+       * swept, so the last copy lived on in this palette.
+       *
+       * Removed rather than repointed: there is no public pull request to
+       * offer, and this file's own rule two blocks up is that a palette
+       * offering a command it cannot run is worse than one offering fewer.
+       * Making the fixture public would bring it back in one line.
+       */
     ],
-    [router],
+    [router, orgSlug],
   );
 
   return (
@@ -173,7 +221,7 @@ export function AppTopbar() {
           {/* The root segment is dropped on narrow screens rather than
               truncated: the last segment is the one that says where you are. */}
           <BreadcrumbItem className="hidden sm:inline-flex">
-            Localize Infra
+            Layersky
           </BreadcrumbItem>
           {current ? (
             <>

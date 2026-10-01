@@ -1,4 +1,5 @@
 import 'server-only';
+import type { AvailableRepository } from './repositories';
 import { listInstallationRepositories } from './repositories';
 
 /**
@@ -137,4 +138,73 @@ export async function checkInstallationHealth(
     repositories: repositories.length,
     sample: repositories.slice(0, SAMPLE_SIZE).map((repo) => repo.fullName),
   };
+}
+
+/**
+ * The repository list, for a surface that must render whatever GitHub says.
+ *
+ * ## The failure this replaces
+ *
+ * `/[org]/projects/[project]` called `listInstallationRepositories` directly
+ * while rendering. That function throws whatever Octokit throws, and when the
+ * stored installation no longer exists GitHub answers **404** to the
+ * access-token request — so the whole page became an HTTP 500 with an empty
+ * `<main>`. Observed, not theorised: after the App was reinstalled on
+ * 2026-09-29 the dev workspace still pointed at the deleted installation, and
+ * every project page returned 500 until the row was corrected.
+ *
+ * An owner uninstalling the App from GitHub's settings produces exactly that
+ * state, and nothing tells this application when they do — the case the module
+ * above already exists for. A customer hitting it got a server error rather
+ * than a page saying what to do.
+ *
+ * ## Why not a try/catch at the call site
+ *
+ * Because then the page would have to decide what a 404 means, and a second
+ * place deciding that is a second place to get it wrong. `explainGitHubFailure`
+ * above already classifies 404, 401/403, 429, 5xx and unreachable in the terms
+ * of the person who can fix each one. This reuses it.
+ *
+ * ## `reconnect` is set for 404 and nothing else
+ *
+ * That flag is the one that tells a reader to connect GitHub again, and it is
+ * only true when GitHub has said the installation is gone. A 401 is the
+ * *operator's* credentials, a 429 is a rate limit, a 5xx is GitHub — none of
+ * them is fixed by reconnecting, and telling a customer to reconnect would
+ * send them to redo work that was never broken. There is a test per branch.
+ */
+export type RepositoryAccess =
+  | { ok: true; repositories: AvailableRepository[] }
+  | {
+      ok: false;
+      problem: string;
+      detail: string | null;
+      /** True only when GitHub reported the installation as gone. */
+      reconnect: boolean;
+    };
+
+/** Octokit's status code, when the thrown value carries one. */
+function isInstallationGone(error: unknown): boolean {
+  return statusOf(error) === 404;
+}
+
+export async function readInstallationRepositories(
+  organizationId: string | null,
+): Promise<RepositoryAccess> {
+  try {
+    return {
+      ok: true,
+      repositories: await listInstallationRepositories(organizationId),
+    };
+  } catch (error) {
+    /*
+     * Logged whole, reported as one sentence. An Octokit error can carry the
+     * App's own credentials in its request context, and `problem` is rendered
+     * to a customer — the same rule `/v1/translate` follows after it returned
+     * a provider error quoting an OpenAI key.
+     */
+    console.error('could not list installation repositories:', error);
+    const { problem, detail } = explainGitHubFailure(error);
+    return { ok: false, problem, detail, reconnect: isInstallationGone(error) };
+  }
 }

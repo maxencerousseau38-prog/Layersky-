@@ -134,7 +134,7 @@ test('remains usable with reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/', { waitUntil: 'networkidle' });
   await expect(
-    page.getByRole('heading', { level: 1, name: /build artifact/i }),
+    page.getByRole('heading', { level: 1, name: /keep up with your code/i }),
   ).toBeVisible();
 });
 

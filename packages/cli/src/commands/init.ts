@@ -133,7 +133,7 @@ export async function runInit(
       if (options?.openPr && !caller.githubConnected) {
         return {
           ok: false,
-          reason: `Workspace "${caller.workspace}" has no GitHub connection, so --open-pr cannot open a pull request. Connect GitHub in the Localize Infra web app, or run without --open-pr.`,
+          reason: `Workspace "${caller.workspace}" has no GitHub connection, so --open-pr cannot open a pull request. Connect GitHub in the Layersky web app, or run without --open-pr.`,
         };
       }
     }

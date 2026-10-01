@@ -37,17 +37,31 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   alternates: { canonical: '/' },
+  /*
+   * Layersky, not "Localize Infra".
+   *
+   * The product is called Layersky everywhere a person reads it; "localize-infra"
+   * is the repository, the npm scope, the Vercel projects and the GitHub App
+   * slug. Those are identifiers with consumers — `@localize-infra/cli` is
+   * published and installed by that name — so they are untouched. Only the
+   * strings a reader sees change.
+   *
+   * The description changed for a second reason: it still sold `extract →
+   * translate → open a pull request`, which is the product from before the
+   * check existed. A search result describing half the product is the version
+   * of stale copy nobody on the team ever looks at.
+   */
   title: {
-    default: 'Localize Infra — translations that live in Git',
-    template: '%s · Localize Infra',
+    default: 'Layersky — Git-native continuous i18n',
+    template: '%s · Layersky',
   },
   description:
-    'Localization infrastructure for product teams. Extract strings from your codebase, translate them, and open a pull request. Your translations stay in your repository.',
+    'Layersky reads every pull request and reports what it broke — a missing translation, a dropped placeholder — as a check on the commit. Point the CLI at a repository and it writes the translations too. Your translations stay in your repository.',
   openGraph: {
     type: 'website',
-    title: 'Localize Infra — translations that live in Git',
+    title: 'Layersky — Git-native continuous i18n',
     description:
-      'Extract, translate, and open a pull request. Your translations stay in your repository.',
+      'An i18n check on every pull request, and translations that open as one. Your translations stay in your repository.',
   },
   robots: { index: true, follow: true },
 };

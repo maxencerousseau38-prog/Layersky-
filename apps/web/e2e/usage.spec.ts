@@ -141,7 +141,17 @@ test.describe('usage', () => {
      * regression, which is the sort of coupling that teaches people to change
      * tests rather than read them.
      */
-    await page.getByRole('link', { name: /Usage/ }).click();
+    /*
+     * Scoped to `main`, because the shell now offers Usage too.
+     *
+     * Tranche 1 put the workspace's own surfaces in the sidebar — Projects,
+     * Set up, CLI tokens, Usage — which is the thing this test's name asks
+     * for, and it made a loose `/Usage/` match two links: the sidebar entry
+     * and the page's own. The subject here is that the *page* offers a way
+     * there, so the page is where it looks. The sidebar route has its own
+     * coverage in `shell-context.test.ts`.
+     */
+    await page.locator('main').getByRole('link', { name: /Usage/ }).click();
     await expect(page).toHaveURL(/\/acceptance\/usage$/, { timeout: 20_000 });
   });
 });

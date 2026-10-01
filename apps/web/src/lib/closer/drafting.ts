@@ -33,12 +33,25 @@ const MODEL = 'claude-opus-5';
  * `closer_workspaces`, and the change is a migration rather than a rewrite.
  */
 const SENDER_PITCH = [
-  'Localize Infra turns a repository into translated locale files and opens a',
+  'Layersky turns a repository into translated locale files and opens a',
   'pull request with them. Developer-first: no dashboard to adopt, no',
   'per-word billing, and the agent raises ambiguous strings as questions',
   'rather than guessing at them.',
 ].join(' ');
 
+/**
+ * The deployed origin, which stays `localize-infra-site` because that is what
+ * it is.
+ *
+ * The product is Layersky; the Vercel project is not renamed, and this string
+ * is doing two jobs that both need the real host. It is handed to the model as
+ * a link it may use, and `allowedHosts` in `@localize-infra/closer-core`
+ * derives the URL allow-list from it — so a prettier value here would not make
+ * a prettier link, it would make every link in the draft fail validation.
+ *
+ * It changes when a custom domain is attached, along with `SITE_URL` in
+ * `apps/site/src/lib/routes.ts`, and not before.
+ */
 const SENDER_LINKS = ['https://localize-infra-site.vercel.app'];
 
 export interface DraftOutcome {
@@ -195,7 +208,16 @@ export async function draftMessageForLead(
     channel,
     evidence,
     senderPitch: SENDER_PITCH,
-    senderName: 'Localize Infra',
+    /*
+     * The name a recipient reads, so it is the product's.
+     *
+     * `buildDraftPrompt` renders this as `FROM: …`, which means every draft
+     * the model wrote signed off as "Localize Infra" — the old name, to
+     * strangers, in the one place the company introduces itself. It survived
+     * the rename because the shell audit looked at screens and this string
+     * never reaches one: it goes into a prompt, and out through an email.
+     */
+    senderName: 'Layersky',
     senderLinks: SENDER_LINKS,
   };
 

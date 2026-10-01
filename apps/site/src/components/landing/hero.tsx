@@ -1,5 +1,6 @@
 import { RunArtifact } from '@/components/landing/run-artifact';
 import {
+  APP_URL,
   CLI_PERSONAL_TOKENS_LIVE,
   CLI_PUBLISHED_TO_NPM,
   EXAMPLE_PR_URL,
@@ -27,7 +28,7 @@ import Link from 'next/link';
 export function Hero() {
   return (
     <>
-      <section className="mx-auto max-w-6xl px-4 pb-8 pt-10 sm:px-6 sm:pb-10 sm:pt-14">
+      <section className="mx-auto max-w-7xl px-4 pb-8 pt-10 sm:px-6 sm:pb-10 sm:pt-14">
         {/*
          * An asymmetric split, not a headline with a void beside it.
          *
@@ -59,10 +60,35 @@ export function Hero() {
             single-line terminal strip that belongs with it, not the space
             between two blocks. gap-10 at xl is a column gutter, a different
             job. */}
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] xl:items-start xl:gap-10">
-          <div>
+        {/*
+         * Centred, which reverses the split above — and the reason the split
+         * existed does not apply to this shape.
+         *
+         * That comment describes a *left-aligned* headline with an empty right
+         * half: 300px of dead zone beside the argument, which §4.5.2 names as
+         * a defect. A centred column has no second half to leave empty. The
+         * terminal path moves below the actions instead of beside them, which
+         * is where the reference template puts its secondary element, and the
+         * run artifact keeps the full-bleed band directly under it.
+         */}
+        <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+          <div className="flex flex-col items-center">
+            {/*
+             * The positioning caught up with the product.
+             *
+             * This read "Localization infrastructure", and the headline below
+             * it read "Your copy is a build artifact" — both describing
+             * `extract → translate → open a pull request`, which is what this
+             * product was when the page was written.
+             *
+             * It is no longer only that. A pull request now gets an i18n check
+             * on the commit, and the capability was proved twice against a real
+             * repository before this sentence was changed. Selling translation
+             * alone undersold the half that runs on every push and needs
+             * nobody to remember it.
+             */}
             <p className="text-eyebrow font-medium uppercase text-tertiary">
-              Localization infrastructure
+              Git-native i18n infrastructure
             </p>
 
             {/*
@@ -82,16 +108,20 @@ export function Hero() {
              * blanket change that would have made every page title lighter for
              * a reason that only holds at 68px.
              */}
-            <h1 className="mt-4 max-w-[15ch] font-display text-display-xl font-medium text-primary lg:text-display-2xl">
-              Your copy is a build artifact.
+            <h1 className="mt-4 max-w-[19ch] font-display text-display-xl font-medium text-primary lg:text-display-2xl">
+              Translations that keep up with your code.
             </h1>
 
             {/* One sentence. The run below is the explanation; a second
                 paragraph here only delays it. */}
-            <p className="mt-5 max-w-[46ch] text-prose text-secondary">
-              Point the CLI at your repository. It finds the strings you
-              hardcoded, translates them in context, and opens a pull request —
-              leaving everything else in your stack exactly where it was.
+            {/* One sentence for each half of the product, and no more. The
+                run below is the explanation; a third sentence here only
+                delays it. */}
+            <p className="mt-5 max-w-[56ch] text-prose text-secondary">
+              Layersky reads every pull request and says what it broke — a key
+              with no translation, a placeholder dropped on the way into French
+              — as a check on the commit. Point the CLI at a repository and it
+              writes the translations too, and opens the pull request.
             </p>
 
             {/*
@@ -104,7 +134,7 @@ export function Hero() {
              * action that does not work: the strongest one that does, promoted.
              * With no public pull request that is the docs.
              */}
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-center">
               {EXAMPLE_PR_URL ? (
                 <>
                   <Button
@@ -132,14 +162,35 @@ export function Hero() {
                   </Button>
                 </>
               ) : (
-                <Button
-                  asChild
-                  variant="primary"
-                  size="lg"
-                  className="w-full sm:w-auto"
-                >
-                  <Link href="/docs#install">Read the docs</Link>
-                </Button>
+                <>
+                  {/*
+                   * Two actions, both real, and the filled one is the product.
+                   *
+                   * There was one — "Read the docs" — because the pull request
+                   * it used to point at was a 404 for everyone but its owner.
+                   * Documentation is not the thing being sold, and the hosted
+                   * app is: sign-up is open, public repositories are
+                   * self-serve, and `APP_URL` is where that happens. The docs
+                   * keep the outline variant, which is the reference
+                   * template's arrangement and also the honest ranking.
+                   */}
+                  <Button
+                    asChild
+                    variant="primary"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                  >
+                    <a href={APP_URL}>Start a run</a>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="secondary"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                  >
+                    <Link href="/docs#install">Read the docs</Link>
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -176,12 +227,12 @@ export function Hero() {
            * directly beneath the actions it belongs to is a label for
            * something already obvious.
            */}
-          <div className="xl:mt-2 xl:rounded-lg xl:border xl:border-line xl:bg-surface/60 xl:p-4">
+          <div className="mt-10 w-full max-w-[34rem] rounded-lg border border-line bg-surface/60 p-4 text-start">
             {/* `text-eyebrow`, which carries its own 0.14em. The hand-written
                 tracking this replaced was a seventh copy of a value the scale
                 already defines (§3.3), and packages/ui's type-scale test
                 enumerates the two files allowed to do that. */}
-            <p className="hidden text-eyebrow font-medium uppercase text-tertiary xl:block">
+            <p className="text-eyebrow font-medium uppercase text-tertiary">
               From your terminal
             </p>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5 xl:mt-3 xl:flex-col xl:items-stretch xl:gap-3">
@@ -216,7 +267,7 @@ export function Hero() {
         aria-label="A run against a real repository"
         className="border-y border-subtle bg-primary"
       >
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
           <RunArtifact />
 
           {/*

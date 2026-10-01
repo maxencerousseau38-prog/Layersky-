@@ -11,9 +11,10 @@ import {
 } from '@/lib/data/workspace';
 import { isGitHubConfigured } from '@/lib/github/config';
 import {
-  installationIdFor,
-  listInstallationRepositories,
-} from '@/lib/github/repositories';
+  type RepositoryAccess,
+  readInstallationRepositories,
+} from '@/lib/github/health';
+import { installationIdFor } from '@/lib/github/repositories';
 import { runAvailability } from '@/lib/runs/availability';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
@@ -52,9 +53,21 @@ export default async function ProjectPage({
   const installationId = gitHubConfigured
     ? await installationIdFor(organization.id)
     : null;
-  const available = installationId
-    ? await listInstallationRepositories(organization.id)
-    : [];
+  /*
+   * Read through the resilient path, because this runs while rendering.
+   *
+   * It called `listInstallationRepositories` directly, which throws whatever
+   * Octokit throws — and a stored installation that no longer exists makes
+   * GitHub answer 404 to the token request, so the page became an HTTP 500
+   * with an empty `<main>`. An owner uninstalling the App from GitHub's
+   * settings produces that state and nothing tells this application when they
+   * do. `readInstallationRepositories` classifies the failure instead of
+   * propagating it; the section below says what happened.
+   */
+  const access: RepositoryAccess = installationId
+    ? await readInstallationRepositories(organization.id)
+    : { ok: true, repositories: [] };
+  const available = access.ok ? access.repositories : [];
 
   const runs = await listRuns(project.id);
 
@@ -153,6 +166,7 @@ export default async function ProjectPage({
             : null
         }
         available={available}
+        unavailable={access.ok ? null : access}
         hasInstallation={Boolean(installationId)}
         gitHubConfigured={gitHubConfigured}
       />

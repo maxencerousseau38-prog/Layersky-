@@ -1,6 +1,7 @@
 import { GatedAction } from '@/components/conversion-dialog';
 import { BuildStatus } from '@/components/landing/build-status';
 import { Commitments } from '@/components/landing/commitments';
+import { ContinuousCheck } from '@/components/landing/continuous-check';
 import { Ecosystem } from '@/components/landing/ecosystem';
 import { Hero } from '@/components/landing/hero';
 import { HowItWorks } from '@/components/landing/how-it-works';
@@ -19,6 +20,16 @@ export default function HomePage() {
           The run now appears once, in the hero, on its own dark ground. */}
       <Hero />
       <HowItWorks />
+      {/*
+       * The check goes here, between the pipeline and what it leaves alone.
+       *
+       * `HowItWorks` describes the run a person starts; this describes the one
+       * nobody starts. Putting it after means a reader has seen what Layersky
+       * produces before being told it also watches — and putting it before
+       * `Ecosystem` keeps "nothing else in your stack has to change" as the
+       * answer to both halves rather than only to the CLI.
+       */}
+      <ContinuousCheck />
       <Ecosystem />
       <Commitments />
       <BuildStatus />
@@ -50,7 +61,7 @@ export default function HomePage() {
        * built. Conversion is asked for after the value, never before it.
        */}
       <section className="border-t border-subtle bg-primary">
-        <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+        <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28">
           <div className="grid gap-10 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-end lg:gap-16">
             <div>
               <p className="text-eyebrow font-medium uppercase text-inverse/60">

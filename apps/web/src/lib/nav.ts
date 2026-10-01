@@ -2,12 +2,17 @@ import {
   Boxes,
   Building2,
   FileText,
+  FolderGit2,
+  Gauge,
   History,
   Inbox,
+  KeyRound,
   Languages,
   LayoutGrid,
   MessageSquare,
   Radar,
+  Receipt,
+  Rocket,
   Settings,
   TriangleAlert,
 } from 'lucide-react';
@@ -144,7 +149,26 @@ export const PRIMARY_NAV: NavRoute[] = [
   },
 ];
 
-export const SECONDARY_NAV: NavRoute[] = [
+/**
+ * The component gallery, kept reachable and out of the customer's navigation.
+ *
+ * `/design` renders every primitive in `packages/ui` with its variants. It is
+ * a development surface — useful, and not something a workspace owner has any
+ * reason to find between Runs and Settings. The route is untouched and the
+ * page still works; it simply stops being advertised.
+ *
+ * It stays in `ALL_ROUTES` below so the breadcrumb resolves when somebody
+ * opens it directly. That is the difference between hiding a tool and
+ * removing one.
+ *
+ * **This paragraph also said ⌘K still reached it by name, and that was the
+ * last place it was advertised.** The palette renders for every signed-in
+ * customer, so "out of the navigation" was true of the sidebar and false of
+ * the menu beside it — the same entry, two surfaces, one of them overlooked.
+ * `app-topbar.tsx` now filters `INTERNAL_NAV` out of the palette and an e2e
+ * test searches for it and requires no result.
+ */
+export const INTERNAL_NAV: NavRoute[] = [
   {
     href: '/design',
     label: 'Design system',
@@ -152,6 +176,9 @@ export const SECONDARY_NAV: NavRoute[] = [
     built: true,
     keywords: 'components gallery ui primitives tokens',
   },
+];
+
+export const SECONDARY_NAV: NavRoute[] = [
   {
     href: '/settings',
     label: 'Settings',
@@ -208,7 +235,86 @@ export const CLOSER_NAV: NavRoute[] = [
   },
 ];
 
-export const ALL_ROUTES = [...PRIMARY_NAV, ...SECONDARY_NAV];
+/**
+ * The workspace's own surfaces, which the navigation did not contain.
+ *
+ * This is the defect the shell audit found, and it is larger than it looks. A
+ * signed-in reader is redirected from `/` to `/{org}/projects` — and the
+ * sidebar then offers Home, Ambiguity, Review, Runs, Locales, Design system and
+ * Settings, none of which is the screen they just landed on. Projects, the
+ * guided start, CLI tokens and usage were reachable only by typing a URL or by
+ * following a link from inside another page.
+ *
+ * So the product a customer actually pays for was the one part of the product
+ * the shell did not name. Everything else in this file is an inbox that spans
+ * workspaces; these four belong to one, which is why they are a function of the
+ * slug rather than a constant.
+ *
+ * `/{org}/billing` is deliberately absent. It renders "Paid plans are not
+ * priced yet" and nothing else, and a permanent navigation entry for a screen
+ * with nothing on it is an advertisement for a feature that does not exist.
+ */
+export function workspaceNav(orgSlug: string): NavRoute[] {
+  return [
+    {
+      href: `/${orgSlug}/projects`,
+      label: 'Projects',
+      icon: FolderGit2,
+      built: true,
+      keywords: 'repository connect repo project target languages',
+    },
+    {
+      href: `/${orgSlug}/start`,
+      label: 'Set up',
+      icon: Rocket,
+      built: true,
+      keywords: 'onboarding guided steps github connect first run start',
+    },
+    {
+      href: `/${orgSlug}/tokens`,
+      label: 'CLI tokens',
+      icon: KeyRound,
+      built: true,
+      keywords: 'token cli personal authentication lit revoke',
+    },
+    {
+      href: `/${orgSlug}/usage`,
+      label: 'Usage',
+      icon: Gauge,
+      built: true,
+      keywords: 'quota ceiling limit spend strings pull requests',
+    },
+  ];
+}
+
+/**
+ * Every workspace route the breadcrumb must be able to name.
+ *
+ * `workspaceNav` is what the sidebar draws; this is what the topbar resolves
+ * against, and the two differ by exactly one entry. Billing is deliberately
+ * absent from the navigation — the reason is on `workspaceNav` above — but a
+ * route reachable from the account menu still has to say where the reader is
+ * when they get there. `/design` already works this way: out of the sidebar,
+ * still resolvable.
+ *
+ * Hiding a destination and refusing to name it are different decisions, and
+ * only the first one was ever taken.
+ */
+export function workspaceRoutes(orgSlug: string): NavRoute[] {
+  return [
+    ...workspaceNav(orgSlug),
+    {
+      href: `/${orgSlug}/billing`,
+      label: 'Billing',
+      icon: Receipt,
+      built: false,
+      blockedBy: 'No plan is priced yet, so there is nothing to bill for.',
+      keywords: 'plan invoice subscription payment',
+    },
+  ];
+}
+
+export const ALL_ROUTES = [...PRIMARY_NAV, ...SECONDARY_NAV, ...INTERNAL_NAV];
 
 export function routeByHref(href: string): NavRoute | undefined {
   return ALL_ROUTES.find((route) => route.href === href);
@@ -228,17 +334,49 @@ export function routeByHref(href: string): NavRoute | undefined {
  *
  * Returns the deepest matching parent plus the trailing segment, so the
  * breadcrumb can read `Runs / 7c1b` and stay a way back rather than a label.
+ *
+ * ## The workspace routes, which it could not see
+ *
+ * `ALL_ROUTES` holds the flat inboxes and nothing else, so for six months the
+ * breadcrumb on `/{org}/projects`, `/{org}/start`, `/{org}/tokens`,
+ * `/{org}/usage` and `/{org}/billing` read "Layersky" and stopped. Measured
+ * across all twelve routes: the five inboxes said "Layersky / Runs", and the
+ * six surfaces a customer actually pays for said nothing. The half of the
+ * product with the most navigating to do was the half with no trail.
+ *
+ * ## Why the slug is a parameter and not read from the path
+ *
+ * Because it must be the *validated* one. `shell-context.ts` already had to
+ * fix this exact bug once, in the sidebar: a slug taken from the URL drew a
+ * workspace's navigation on the 404 page of a workspace the reader is not in.
+ * The breadcrumb naming a route inside someone else's workspace would be the
+ * same assertion by a quieter route.
+ *
+ * So the caller passes the slug the layout resolved against `listOrganizations`
+ * under RLS. Given `null`, or given a path inside a workspace that is not the
+ * one resolved, no workspace route matches and the breadcrumb falls back to
+ * the product name — which is the correct thing to say about a page the reader
+ * cannot see.
  */
-export function resolveRoute(pathname: string): {
+export function resolveRoute(
+  pathname: string,
+  /** The reader's validated workspace, never a slug taken from the URL. */
+  orgSlug?: string | null,
+): {
   route: NavRoute | undefined;
   detail?: string;
 } {
-  const exact = routeByHref(pathname);
+  const candidates = orgSlug
+    ? [...ALL_ROUTES, ...workspaceRoutes(orgSlug)]
+    : ALL_ROUTES;
+
+  const exact = candidates.find((route) => route.href === pathname);
   if (exact) return { route: exact };
 
-  const parent = ALL_ROUTES.filter(
-    (route) => route.href !== '/' && pathname.startsWith(`${route.href}/`),
-  )
+  const parent = candidates
+    .filter(
+      (route) => route.href !== '/' && pathname.startsWith(`${route.href}/`),
+    )
     // Deepest wins, so a future nested route does not resolve to a shallower one.
     .sort((a, b) => b.href.length - a.href.length)[0];
 

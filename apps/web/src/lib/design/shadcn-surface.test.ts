@@ -111,10 +111,19 @@ describe('components/ui', () => {
      * is the first step back to two design systems, and it is a one-line diff
      * that looks like nothing in review.
      */
+    /*
+     * `nav-account.tsx` is the fourth, and it is the sidebar's own footer —
+     * split out of `app-sidebar.tsx` rather than added beside it, because the
+     * account menu is a self-contained piece of the same component. Listing it
+     * is not a loosening: the point of this assertion is that a *page* cannot
+     * reach shadcn, and this file is chrome the shell composes, importing
+     * `SidebarMenu*` and `useSidebar` for the same reason its parent does.
+     */
     const ENTRY = [
       'src/app/layout.tsx',
       'src/components/app-sidebar.tsx',
       'src/components/app-topbar.tsx',
+      'src/components/nav-account.tsx',
     ];
     const importers = FILES.filter(
       (f) =>

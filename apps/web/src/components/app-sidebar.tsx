@@ -1,5 +1,6 @@
 'use client';
 
+import { NavAccount } from '@/components/nav-account';
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +16,12 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { type NavRoute, PRIMARY_NAV, SECONDARY_NAV } from '@/lib/nav';
+import {
+  type NavRoute,
+  PRIMARY_NAV,
+  SECONDARY_NAV,
+  workspaceNav,
+} from '@/lib/nav';
 import { FlaskConical } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -81,7 +87,25 @@ function NavItem({
   );
 }
 
-export function AppSidebar({ sampleData }: { sampleData: boolean }) {
+export function AppSidebar({
+  sampleData,
+  orgSlug,
+  account,
+}: {
+  sampleData: boolean;
+  /**
+   * The workspace whose surfaces the navigation names, or null.
+   *
+   * Null for a reader with no workspace yet — during sign-up, and in the
+   * preview build with no database. The group is then not rendered at all
+   * rather than rendered with dead links: a navigation entry that 404s is
+   * worse than an absent one, because it looks like the product is broken
+   * rather than like it has not started.
+   */
+  orgSlug: string | null;
+  /** The signed-in address, or null when nobody is. */
+  account: string | null;
+}) {
   return (
     <Sidebar collapsible="icon" className="border-e border-line">
       <SidebarHeader className="h-12 justify-center px-3">
@@ -117,7 +141,7 @@ export function AppSidebar({ sampleData }: { sampleData: boolean }) {
             <span className="block h-[2px] w-1/2 rounded-full bg-line" />
           </span>
           <span className="truncate group-data-[collapsible=icon]:hidden">
-            Localize&nbsp;Infra
+            Layersky
           </span>
         </Link>
       </SidebarHeader>
@@ -129,8 +153,43 @@ export function AppSidebar({ sampleData }: { sampleData: boolean }) {
           immediately and a sighted reviewer would never see. */}
       <SidebarContent>
         <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-2">
+          {/*
+           * The workspace's own surfaces, which this navigation did not have.
+           *
+           * A signed-in reader is redirected from `/` to `/{org}/projects`, and
+           * the sidebar then offered Home, Ambiguity, Review, Runs, Locales,
+           * Design system and Settings — none of which is the screen they had
+           * just landed on. Projects, the guided set-up, CLI tokens and usage
+           * were reachable only by typing a URL.
+           *
+           * So the part of the product a customer pays for was the one part the
+           * shell did not name. It goes first because it is where the work
+           * starts; the group below it is the set of inboxes, which span
+           * workspaces and answer "what is waiting on me".
+           */}
+          {orgSlug ? (
+            <>
+              <SidebarGroup>
+                <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {workspaceNav(orgSlug).map((route) => (
+                      <NavItem
+                        key={route.href}
+                        route={route}
+                        collapsedLabel={route.label}
+                      />
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+
+              <SidebarSeparator />
+            </>
+          ) : null}
+
           <SidebarGroup>
-            <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+            <SidebarGroupLabel>Pipeline</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {PRIMARY_NAV.map((route) => (
@@ -194,9 +253,16 @@ export function AppSidebar({ sampleData }: { sampleData: boolean }) {
        * data as real, pointing the other way. It is now shown only where it is
        * true — no database — and says what is actually on screen there.
        */}
-      {sampleData ? (
-        <SidebarFooter className="group-data-[collapsible=icon]:hidden">
-          <div className="flex items-start gap-2 rounded-md border border-dashed border-strong px-2.5 py-2">
+      <SidebarFooter className="gap-2">
+        {/*
+         * The note keeps its own visibility rule — it is about the data, not
+         * about the reader — while the account below is about the reader and
+         * shows whenever there is one. They were one block; separating them
+         * means the preview build still explains itself and a signed-in
+         * workspace is not told its real data is invented.
+         */}
+        {sampleData ? (
+          <div className="flex items-start gap-2 rounded-md border border-dashed border-strong px-2.5 py-2 group-data-[collapsible=icon]:hidden">
             <FlaskConical
               className="mt-0.5 size-3.5 shrink-0 text-tertiary"
               aria-hidden="true"
@@ -207,8 +273,10 @@ export function AppSidebar({ sampleData }: { sampleData: boolean }) {
               every other screen says it has nothing to read.
             </p>
           </div>
-        </SidebarFooter>
-      ) : null}
+        ) : null}
+
+        {account ? <NavAccount email={account} orgSlug={orgSlug} /> : null}
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>

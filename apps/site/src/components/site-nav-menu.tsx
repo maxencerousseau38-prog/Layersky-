@@ -49,7 +49,7 @@ export function SiteNavMenu({
 
       <SheetContent side="end" size="sm" aria-describedby={undefined}>
         <DialogTitle className="flex h-16 shrink-0 items-center px-5 text-body font-semibold text-primary">
-          Localize&nbsp;Infra
+          Layersky
         </DialogTitle>
 
         <nav aria-label="Main" className="px-3">
