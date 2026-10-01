@@ -55,7 +55,7 @@ const LOCALE_FILES = [
 export function SiteFooter() {
   return (
     <footer className="border-t border-subtle">
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20">
+      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
           <div className="lg:col-span-5">
             <p className="font-display text-title font-semibold text-primary">
@@ -125,7 +125,7 @@ export function SiteFooter() {
       </div>
 
       <div className="border-t border-subtle">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6 sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6 sm:px-6 lg:px-8">
           <span
             aria-hidden="true"
             className="flex h-3.5 w-3.5 shrink-0 flex-col justify-between py-[1px]"

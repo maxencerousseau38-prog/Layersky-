@@ -147,11 +147,25 @@ export function ReviewList({ items }: { items: readonly ReviewItem[] }) {
             return (
               <section key={runId} aria-labelledby={`run-${runId}`}>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-subtle pb-3">
+                  {/*
+                   * `subtitle` 16/600, the step every other h2 in this
+                   * application uses — not `small` 13/500.
+                   *
+                   * Measured across the dashboard: `/usage` and `/[org]/start`
+                   * run their h2 at 16/600, this one ran at 13/500, and the
+                   * proposal rows it groups are `body` 14. So the heading was
+                   * a step *below* the content it headed, which is the
+                   * hierarchy-contrast failure DESIGN.md §3.5 names and which
+                   * this repository has already corrected twice on the site.
+                   *
+                   * The id keeps the monospace; the word does not. A run id is
+                   * machine output (§8) and the label around it is prose.
+                   */}
                   <h2
                     id={`run-${runId}`}
-                    className="font-mono text-small font-medium text-primary"
+                    className="text-subtitle font-semibold text-primary"
                   >
-                    Run {runId.slice(0, 8)}
+                    Run <span className="font-mono">{runId.slice(0, 8)}</span>
                   </h2>
                   <p className="text-caption text-tertiary">
                     {rows.length} proposal{rows.length === 1 ? '' : 's'} ·{' '}

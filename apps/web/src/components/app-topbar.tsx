@@ -17,6 +17,7 @@ import {
   BreadcrumbSeparator,
   type CommandItem,
   CommandPalette,
+  Kbd,
   ThemeToggle,
   cn,
   setTheme,
@@ -264,27 +265,59 @@ export function AppTopbar({
         </BreadcrumbList>
       </Breadcrumb>
 
+      {/*
+       * Shaped like a field, which is the template's `SearchTrigger`.
+       *
+       * This was a compact chip pushed to the far right: icon, the word
+       * `Search`, and the shortcut, all centred in 100px. The template builds
+       * the same control as `relative w-full justify-start … md:w-36 lg:w-56`
+       * with the shortcut absolutely positioned — so it reads as a search box
+       * rather than as a third button beside the theme toggle.
+       *
+       * That difference is the whole point of this control. The comment below
+       * already argued that a palette nobody knows about is a palette nobody
+       * uses; a chip that looks like chrome is how it stays unknown.
+       *
+       * Layersky keeps its breadcrumb, which the template's header does not
+       * have, so the field takes a fixed width beside it instead of the
+       * template's `flex-1 max-w-sm`.
+       */}
       <button
         type="button"
         onClick={() => setPaletteOpen(true)}
         className={cn(
-          'flex h-7 shrink-0 items-center gap-2 rounded-md border border-line bg-surface px-2.5',
+          'relative flex h-8 shrink-0 items-center gap-2 rounded-md border border-line bg-surface',
+          // Icon-only until there is room for the word, then a field.
+          'justify-center px-2 sm:w-40 sm:justify-start sm:ps-2.5 sm:pe-12 lg:w-56',
           'text-small text-tertiary',
           'transition-colors duration-(--duration-micro) hover:text-secondary',
           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         )}
       >
-        <Search className="size-3.5" aria-hidden="true" />
+        <Search className="size-3.5 shrink-0" aria-hidden="true" />
         <span className="sr-only sm:not-sr-only">Search</span>
         {/* The shortcut is shown, not hidden: a palette nobody knows about is a
             palette nobody uses. Hidden where there is no keyboard to press it
             with. */}
-        {/* `text-secondary`, not tertiary: at 11px this measured 4.54:1, which
-            clears AA by four hundredths — a coincidence rather than a margin,
-            and this is the one affordance telling a reader the palette exists. */}
-        <kbd className="hidden font-mono text-micro text-secondary sm:inline">
+        {/*
+          `Kbd`, not a hand-written `<kbd>`, and the reason is the contrast
+          value rather than the duplication.
+
+          Both this file and `Kbd` measured the same thing — `text-secondary`
+          at 11px is 4.54:1 — and reached opposite conclusions. The primitive
+          called four hundredths over the threshold "not a margin, a
+          coincidence" and moved to `text-primary`; this copy acknowledged the
+          same coincidence and kept `secondary` anyway. One decision, two
+          places, in disagreement, with the one that resolved it unused.
+
+          Everything the chip needs is already in the primitive — the border,
+          the ground, the mono micro step. What stays here is only what is
+          about *this* position: pinned to the field's trailing edge, and
+          absent where there is no keyboard to press it with.
+        */}
+        <Kbd className="pointer-events-none absolute end-1.5 top-1/2 hidden -translate-y-1/2 sm:inline-flex">
           ⌘K
-        </kbd>
+        </Kbd>
       </button>
 
       <ThemeToggle />

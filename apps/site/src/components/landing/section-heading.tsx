@@ -1,3 +1,4 @@
+import { Badge, cn } from '@localize-infra/ui';
 import type * as React from 'react';
 
 /**
@@ -25,10 +26,32 @@ import type * as React from 'react';
  * title, so 40 → 24 → 17 already ranks. The step belongs to the surface's
  * register, not to the tag.
  */
+/**
+ * ## The eyebrow is a `Badge` now, which is the template's shape
+ *
+ * `features-section.tsx` opens every block with `<Badge variant="outline"
+ * className="mb-4">`, not with a letter-spaced paragraph. The badge is a real
+ * object — it has an edge, so it reads as a label rather than as the first line
+ * of the heading — and at `caption` it is the same 12px this page already spent
+ * on the eyebrow.
+ *
+ * `tone="neutral"` is the template's `outline`: `bg-raised text-secondary
+ * border-subtle`, and the only `Badge` tone that renders no icon, which is
+ * right for a label that reports nothing.
+ *
+ * `align="center"` exists because the template centres its section headers
+ * (`mx-auto max-w-2xl text-center mb-16`). It is a prop rather than the default
+ * because DESIGN.md §4.4 forbids adjacent sections sharing a structural
+ * signature, and centring all seven would be the "document, not a composition"
+ * failure that section names. Sections that already carry an asymmetric split
+ * keep their left-aligned header; the ones that lead a full-width payload take
+ * the centred one.
+ */
 export function SectionHeading({
   eyebrow,
   title,
   id,
+  align = 'start',
   children,
   className,
 }: {
@@ -36,21 +59,31 @@ export function SectionHeading({
   title: string;
   /** Set when a section labels itself by this heading via `aria-labelledby`. */
   id?: string;
+  align?: 'start' | 'center';
   /** Optional lede or supporting prose, rendered under the heading. */
   children?: React.ReactNode;
   className?: string;
 }) {
+  const centred = align === 'center';
   return (
-    <div className={className ?? 'max-w-3xl'}>
-      <p className="text-eyebrow font-medium uppercase text-tertiary">
-        {eyebrow}
-      </p>
+    <div
+      className={cn(
+        centred ? 'mx-auto max-w-2xl text-center' : 'max-w-3xl',
+        className,
+      )}
+    >
+      <Badge tone="neutral">{eyebrow}</Badge>
       {/* Steps down below sm, as DESIGN.md §3.4 requires of display type. The
           measure widens with the step: 40px in a 2xl column broke these
           headings onto three lines at 1440. */}
       <h2
         id={id}
-        className="mt-3 max-w-[20ch] font-display text-display font-semibold text-primary sm:text-display-lg"
+        className={cn(
+          'mt-4 font-display text-display font-semibold text-primary sm:text-display-lg',
+          // The centred variant has the container's measure already; a second
+          // `max-w` inside it fights the centring.
+          centred ? 'text-balance' : 'max-w-[20ch]',
+        )}
       >
         {title}
       </h2>

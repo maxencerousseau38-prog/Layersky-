@@ -57,21 +57,29 @@ export function MetricGrid({
       aria-label={label}
       className={cn(
         /*
-         * Three abreast from `md`, not from `lg`.
+         * Sized by the container, not the viewport.
          *
-         * At `lg` the three tiles wrapped to two rows at 768 and pushed the
-         * run table's first row to y=639 — measured, not guessed. Three
-         * numbers spending 415px of a tablet viewport is the blankness
-         * DESIGN.md §4.6 forbids wearing a different costume.
+         * This read `sm:grid-cols-2 md:grid-cols-3` — viewport breakpoints —
+         * and the comment that stood here explained why `md` had been picked
+         * over `lg`: at 768 the three tiles wrapped to two rows and pushed the
+         * run table down, so the step was moved. That was the right call
+         * against the wrong instrument.
          *
-         * 768 is also where the 256px sidebar appears, so the content column
-         * *narrows* going from 767 to 768. That is the breakpoint pathology
-         * this repository has already been bitten by once, which is why the
-         * three-column step was verified at 768 rather than reasoned about.
+         * 768 is exactly where the 256px sidebar appears, so the column these
+         * tiles live in *narrows* from 767 to 768 while the viewport widens.
+         * A viewport breakpoint cannot express that, which is why the fix had
+         * to be found by measuring and could not be reasoned about. Measured
+         * again before this change: at a 768 viewport `main` is 512px and the
+         * old rule put three tiles across 464px.
+         *
+         * `@md/main` is 28rem of *column*, `@3xl/main` is 48rem. The result at
+         * the three widths checked: 390 → one tile, 768 (column 512px) → two,
+         * 1440 (column 1184px) → three. The middle one is the case the
+         * viewport rule got wrong.
          */
-        'grid gap-3 sm:grid-cols-2',
-        columns === 3 && 'md:grid-cols-3',
-        columns === 4 && 'md:grid-cols-2 xl:grid-cols-4',
+        'grid gap-3 @md/main:grid-cols-2',
+        columns === 3 && '@3xl/main:grid-cols-3',
+        columns === 4 && '@5xl/main:grid-cols-4',
         className,
       )}
       {...props}

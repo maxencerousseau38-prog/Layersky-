@@ -136,7 +136,11 @@ export default async function UsagePage({
             half a metre apart they read as two unrelated facts.
           */}
           <dl
-            className="mt-5 grid max-w-2xl gap-x-10 gap-y-5 sm:grid-cols-2"
+            // `@md/main`, not `sm:` — these two figures share a panel inside
+            // the content column, and at a 768 viewport that column is 512px
+            // wide, not 768. The viewport step put them side by side at a
+            // width the column did not have.
+            className="mt-5 grid max-w-2xl gap-x-10 gap-y-5 @md/main:grid-cols-2"
             data-testid="today-totals"
           >
             <div data-testid="today-strings">
@@ -246,7 +250,18 @@ export default async function UsagePage({
           itself in an `overflow-x-auto` wrapper, so the frame cannot be burst
           by a wide row.
         */}
-        <div className="mt-3 rounded-lg border border-line px-4 pt-3">
+        {/*
+          The side padding starts at `sm`, and that is a fix rather than a
+          preference.
+
+          With `px-4` at every width the panel took 32px out of a 358px column
+          at 390, and the toolbar inside it needs 356 — so the filter pushed the
+          panel 16px wider than its own box, and the panel pushed the section.
+          Measured: toolbar scrollWidth 356 against clientWidth 324. `/runs`
+          shows the identical toolbar with no panel and does not overflow, which
+          is what identified the padding as the cause rather than the toolbar.
+        */}
+        <div className="mt-3 rounded-lg border border-line pt-3 sm:px-4">
           {/*
             The same component /runs uses, not a second table of the same
             object (DESIGN.md §8). It brings its own filter, search and
