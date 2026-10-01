@@ -1,10 +1,11 @@
+import { Metric, MetricGrid } from '@/components/metric';
 import { NotConnected } from '@/components/not-connected';
 import { Page, PageHeader, PageMeta } from '@/components/page';
 import { type RunTableRow, RunsTable } from '@/components/runs-table';
 import { listRunsForViewer, requireSession } from '@/lib/data/workspace';
 import { toRunTableRow } from '@/lib/runs/table-row';
 import { isSupabaseConfigured } from '@/lib/supabase/env';
-import { EmptyState } from '@localize-infra/ui';
+import { Badge, EmptyState } from '@localize-infra/ui';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = { title: 'Runs' };
@@ -45,6 +46,25 @@ export default async function RunsPage() {
   const succeeded = runs.filter((r) => r.status === 'succeeded').length;
   const newest = runs[0];
 
+  /*
+   * The three facts the table does not already total, and no more.
+   *
+   * Deliberately absent: strings translated. `/[org]/usage` reports that from
+   * `api_usage_daily` — the row the ceiling is enforced against — and its own
+   * docstring explains why it never re-derives it from `runs`. Summing
+   * `keys_translated` here would be that second tally, on another page, free
+   * to disagree with the number the API actually refuses against.
+   *
+   * Also absent: a run count. The toolbar below states it, which §8 requires,
+   * and a tile repeating it forty pixels higher is chrome.
+   */
+  const needsYou = runs.filter((r) => r.status === 'awaiting_review').length;
+  const pullRequests = runs.filter((r) => r.pr_number !== null).length;
+  // Every total above is over the runs on this page. Past fifty that is not
+  // every run, and a total that looks complete while being a window is the
+  // kind of claim this repository keeps having to retract.
+  const window = truncated ? 'Across the 50 most recent runs.' : null;
+
   // Shared with /[org]/usage, which renders the same table. The mapping lived
   // here until a second surface needed it (lib/runs/table-row.ts).
   const rows: RunTableRow[] = runs.map(toRunTableRow);
@@ -55,20 +75,50 @@ export default async function RunsPage() {
         title="Runs"
         purpose="Every extraction and translation, what it produced, and what it cost you in time."
         meta={
-          runs.length > 0 ? (
-            <>
-              <PageMeta label="Last run">
-                {newest
-                  ? new Date(newest.created_at).toISOString().slice(0, 10)
-                  : '—'}
-              </PageMeta>
-              <PageMeta label="Succeeded">
-                {succeeded} of {runs.length}
-              </PageMeta>
-            </>
+          newest ? (
+            <PageMeta label="Last run">
+              {new Date(newest.created_at).toISOString().slice(0, 10)}
+            </PageMeta>
           ) : null
         }
       />
+
+      {/*
+        Succeeded moved out of the header and into a tile beside two facts the
+        header never carried. It was one of two items in a `caption`-sized
+        metadata row, which is the right size for a timestamp and the wrong one
+        for the answer to "is this working".
+      */}
+      {runs.length > 0 ? (
+        <div className="mt-6">
+          <MetricGrid label="Summary of these runs" columns={3}>
+            <Metric
+              label="Needs your call"
+              value={needsYou}
+              note="Stopped on a question only you can answer."
+              badge={
+                /* Iris, and only when there is something to answer. DESIGN.md
+                   §1.4 reserves this tone for "your judgement is required";
+                   zero of them is not a state (§6.3). */
+                needsYou > 0 ? <Badge tone="ambiguous">Waiting</Badge> : null
+              }
+            />
+            <Metric
+              label="Succeeded"
+              value={`${succeeded} of ${runs.length}`}
+              note="Every target locale delivered."
+            />
+            <Metric
+              label="Pull requests opened"
+              value={pullRequests}
+              note="Shipped to your repository."
+            />
+          </MetricGrid>
+          {window ? (
+            <p className="mt-2 text-caption text-tertiary">{window}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {runs.length === 0 ? (
         <div className="mt-8">

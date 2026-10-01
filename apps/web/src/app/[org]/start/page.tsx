@@ -96,8 +96,8 @@ export default async function StartPage({
     github: (
       <>
         <p className="max-w-[64ch] text-small leading-6 text-secondary">
-          Localize Infra opens pull requests through a GitHub App you install on
-          your own account. You choose which repositories it may read.
+          Layersky opens pull requests through a GitHub App you install on your
+          own account. You choose which repositories it may read.
         </p>
         <Link
           href={`/${org}/projects`}

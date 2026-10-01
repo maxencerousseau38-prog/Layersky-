@@ -32,9 +32,8 @@ export default async function LoginPage({
         Sign in
       </h1>
       <p className="mt-2 text-body text-secondary">
-        Localize Infra keeps your translations in your repository. An account
-        records which repositories you have connected — never the strings
-        themselves.
+        Layersky keeps your translations in your repository. An account records
+        which repositories you have connected — never the strings themselves.
       </p>
 
       {configured ? (

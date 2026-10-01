@@ -85,14 +85,44 @@ test.describe('command palette', () => {
     // An empty query must list everything, never a blank box.
     await expect(page.getByRole('option')).not.toHaveCount(0);
 
-    await input.fill('design');
+    /*
+     * `locales`, not `design`.
+     *
+     * This filtered for "design" and navigated to the component gallery,
+     * which is the one route the palette must now *not* offer: `/design` is a
+     * development surface, it was taken out of the sidebar when that was
+     * decided, and the palette was the last place still advertising it to a
+     * customer. The route is untouched — line 158 below still opens it
+     * directly and it still resolves in the breadcrumb.
+     *
+     * The subject of this test is filtering and navigating, not which entry
+     * it lands on, so it keeps both with a route that belongs in a customer's
+     * palette.
+     */
+    await input.fill('locales');
     await expect(page.getByRole('option')).toHaveCount(1);
     await page.keyboard.press('Enter');
 
-    await expect(page).toHaveURL(/\/design$/);
+    await expect(page).toHaveURL(/\/locales$/);
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Design system' }),
+      page.getByRole('heading', { level: 1, name: 'Locales' }),
     ).toBeVisible();
+  });
+
+  /*
+   * The gallery is unlisted, and this is what "unlisted" has to mean.
+   *
+   * Non-vacuous by construction: the same query that must find nothing here
+   * found exactly one option until this pass, which is what the test above
+   * used to navigate with.
+   */
+  test('does not offer the internal component gallery', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' });
+    await page.keyboard.press('ControlOrMeta+k');
+    await expect(page.getByRole('combobox')).toBeFocused();
+
+    await page.getByRole('combobox').fill('design system');
+    await expect(page.getByRole('option')).toHaveCount(0);
   });
 
   test('the shortcut toggles: pressing it again closes the palette', async ({
@@ -213,8 +243,22 @@ test.describe('responsive shell', () => {
     await expect(nav).toBeVisible();
     await expect(nav).toHaveCount(1);
 
-    await nav.getByRole('link', { name: 'Design system' }).click();
-    await expect(page).toHaveURL(/\/design$/);
+    /*
+     * `Runs`, not `Design system`.
+     *
+     * This clicked the component gallery, which is no longer in the
+     * navigation: `/design` is a development surface and was moved out of the
+     * customer's menu into `INTERNAL_NAV`, reachable by URL and by ⌘K. The
+     * route still works; it is simply not advertised, so a test clicking it in
+     * the sheet had nothing to click.
+     *
+     * The subject here is that selecting a destination dismisses the sheet.
+     * Any navigation entry proves that, and `Runs` is in the Pipeline group at
+     * every width and for every reader — including one with no workspace,
+     * where the Workspace group is not rendered at all.
+     */
+    await nav.getByRole('link', { name: 'Runs' }).click();
+    await expect(page).toHaveURL(/\/runs$/);
     // Selecting a destination must dismiss the sheet, or the reader lands on
     // the new page with the navigation still covering it.
     await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0);

@@ -136,7 +136,10 @@ export function createCallerMiddleware(options: CallerAuthOptions) {
       return c.json(
         {
           error:
-            'This CLI token is invalid, expired or revoked. Create a new one in the Localize Infra web app, under your workspace’s CLI tokens.',
+            // "Layersky web app", not "Localize Infra": this names the
+            // product a reader signs in to, not the GitHub App, whose display
+            // name really is the old one and is left alone on purpose.
+            'This CLI token is invalid, expired or revoked. Create a new one in the Layersky web app, under your workspace’s CLI tokens.',
         },
         401,
       );

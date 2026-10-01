@@ -68,7 +68,10 @@ export function GitHubConnection({
   return (
     <section
       aria-labelledby="github"
-      className="mt-6 rounded-lg border border-line bg-surface/40 px-5 py-5"
+      /* No top margin: this is now the first block inside a tab panel,
+         which brings its own `pt-4`. The margin was spacing from the block
+         that used to sit above it on the page. */
+      className="rounded-lg border border-line bg-surface/40 px-5 py-5"
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2">
         <h2 id="github" className="text-subtitle font-semibold text-primary">

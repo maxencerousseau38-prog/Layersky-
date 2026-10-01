@@ -1,7 +1,7 @@
 'use client';
 
 import { SiteNavMenu } from '@/components/site-nav-menu';
-import { GITHUB_REPO_URL } from '@/lib/constants';
+import { APP_URL, GITHUB_REPO_URL } from '@/lib/constants';
 import { Button, ThemeToggle, cn } from '@localize-infra/ui';
 import Link from 'next/link';
 import * as React from 'react';
@@ -89,7 +89,7 @@ export function SiteHeader() {
         ],
       )}
     >
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-4 sm:px-6">
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-8 px-4 sm:px-6">
         {/* The one tracking value on the site that is not carried by its type
             step. The wordmark is `body`-sized, and `body` is every paragraph,
             button and table cell in both apps — binding a wordmark's fit to it
@@ -107,7 +107,7 @@ export function SiteHeader() {
             <span className="block h-[2px] w-3/4 rounded-full bg-strong" />
             <span className="block h-[2px] w-1/2 rounded-full bg-line" />
           </span>
-          Localize&nbsp;Infra
+          Layersky
         </Link>
 
         {/*
@@ -149,6 +149,21 @@ export function SiteHeader() {
               >
                 GitHub
               </a>
+            </Button>
+            {/*
+             * The way into the product, which this bar did not offer.
+             *
+             * Every action here pointed outward — a repository, a theme — so a
+             * reader who had decided had nowhere to go but back to the hero.
+             * The reference template ends its bar with a filled action for the
+             * same reason, and `APP_URL` is a real one: sign-up is open and
+             * public repositories are self-serve.
+             *
+             * Filled, and the only filled control in the bar. Two would make
+             * neither primary.
+             */}
+            <Button asChild variant="primary" size="sm">
+              <a href={APP_URL}>Start a run</a>
             </Button>
           </div>
           <SiteNavMenu items={NAV} />

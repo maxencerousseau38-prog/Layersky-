@@ -62,7 +62,7 @@ const COMMITMENTS: Array<{
 
 export function Commitments() {
   return (
-    <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28">
       <SectionHeading
         eyebrow="Commitments"
         title="Three promises, and whether we keep them yet"
@@ -92,8 +92,20 @@ export function Commitments() {
                 <Badge tone={tone}>{status}</Badge>
               </div>
               <p className="mt-3 text-small leading-6 text-secondary">{body}</p>
+              {/*
+               * `small`, not `caption`. These are sentences — 21 words in one
+               * case — and `caption` is the 12px step this design system
+               * reserves for labels, code and metadata.
+               *
+               * A visual audit of every 12px element on this page found 77 of
+               * them: 42 monospace, 26 uppercase or letter-spaced labels, 7
+               * short labels, and these two. The page was not typographically
+               * dense, which is what the comparison against the reference
+               * template first concluded; two sentences were wearing a
+               * label's size, and nothing about the scale needed changing.
+               */}
               {detail ? (
-                <p className="mt-2 text-caption leading-5 text-tertiary">
+                <p className="mt-2 text-small leading-5 text-tertiary">
                   {detail}
                 </p>
               ) : null}

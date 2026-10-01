@@ -19,7 +19,7 @@ deployment at `https://localize-infra-api.vercel.app`, or one you run yourself
 (see `apps/api/README.md`). `init` does not call any LLM or GitHub API
 directly itself.
 
-**Authenticate with a personal CLI token.** Create one in the Localize Infra
+**Authenticate with a personal CLI token.** Create one in the Layersky
 web app, under your workspace's *CLI tokens*, and set it in
 `LOCALIZE_API_TOKEN`. It is shown once, expires, and can be revoked on its
 own. A token acts for that workspace only: pull requests are opened through

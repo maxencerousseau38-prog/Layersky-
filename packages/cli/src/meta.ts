@@ -54,7 +54,7 @@ Options:
 Environment: LOCALIZE_API_URL and LOCALIZE_API_TOKEN are read when the matching
 flag is absent. An empty value counts as absent, not as an override.
 
-API token: a personal CLI token, created in the Localize Infra web app under
+API token: a personal CLI token, created in the Layersky web app under
 your workspace's CLI tokens. Set it in LOCALIZE_API_TOKEN (recommended). The
 --api-token flag is also available but leaks the token into shell history and
 process listings (e.g. \`ps\`); prefer the environment variable. If both are set,

@@ -55,7 +55,7 @@ const LOCALE_FILES = [
 export function SiteFooter() {
   return (
     <footer className="border-t border-subtle">
-      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
+      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
           <div className="lg:col-span-5">
             <p className="font-display text-title font-semibold text-primary">
@@ -125,7 +125,7 @@ export function SiteFooter() {
       </div>
 
       <div className="border-t border-subtle">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6 sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6 sm:px-6">
           <span
             aria-hidden="true"
             className="flex h-3.5 w-3.5 shrink-0 flex-col justify-between py-[1px]"
@@ -133,6 +133,21 @@ export function SiteFooter() {
             <span className="block h-[2px] w-full rounded-full bg-strong" />
             <span className="block h-[2px] w-3/4 rounded-full bg-line" />
             <span className="block h-[2px] w-1/2 rounded-full bg-line" />
+          </span>
+          {/*
+           * The name, which the footer did not carry.
+           *
+           * The mark beside it was here; the word was not, so the document
+           * ended without ever naming what the reader had been reading about.
+           * The reference template closes on a wordmark for the same reason,
+           * and this is the one thing its footer does that ours did not.
+           *
+           * `subtitle`, the step the header wordmark uses — the two marks now
+           * rank the same, which they should, rather than the closing one
+           * being a nameless glyph.
+           */}
+          <span className="font-display text-subtitle font-semibold text-primary">
+            Layersky
           </span>
           <p className="text-small text-tertiary">
             Early access. The CLI and the hosted app both work today; billing

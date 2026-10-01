@@ -49,6 +49,19 @@ export interface RepositorySectionProps {
   } | null;
   /** Empty when GitHub is unconfigured, or the installation was granted none. */
   available: AvailableRepository[];
+  /**
+   * Why the repository list could not be read, when it could not.
+   *
+   * Null on the ordinary path. Non-null means GitHub was asked and refused,
+   * and `available` is then empty for a reason that is not "no repositories
+   * were granted" — a distinction this section used to be unable to draw,
+   * because the page crashed before it could render at all.
+   */
+  unavailable: {
+    problem: string;
+    detail: string | null;
+    reconnect: boolean;
+  } | null;
   /** Whether this workspace has its own installation of the App. */
   hasInstallation: boolean;
   gitHubConfigured: boolean;
@@ -72,6 +85,7 @@ export function RepositorySection({
   projectSlug,
   connected,
   available,
+  unavailable,
   hasInstallation,
   gitHubConfigured,
 }: RepositorySectionProps) {
@@ -98,6 +112,40 @@ export function RepositorySection({
           <Badge tone="neutral">Not connected</Badge>
         )}
       </div>
+
+      {/*
+       * GitHub was asked and refused. Said here rather than swallowed.
+       *
+       * `degraded` and not `failed`: what is connected still is, and the pull
+       * request path may well still work — what is unknown is the list of
+       * repositories this installation reaches. Colouring it as a failure
+       * would assert something this page has not established (§6.3).
+       *
+       * `reconnect` decides whether a way out is offered at all. It is true
+       * only when GitHub reported the installation as gone; a 401 is the
+       * operator's credentials, a 429 is a rate limit, a 5xx is GitHub — none
+       * is fixed by reconnecting, and offering the button there would send
+       * somebody to redo work that was never broken.
+       */}
+      {unavailable ? (
+        <Alert tone="degraded" size="section" className="mt-4">
+          <p>{unavailable.problem}</p>
+          {unavailable.detail ? (
+            // Verbatim (DESIGN.md §8): a reader comparing this against their
+            // own GitHub logs must see the same string.
+            <p className="mt-2 font-mono text-caption text-tertiary">
+              {unavailable.detail}
+            </p>
+          ) : null}
+          {unavailable.reconnect ? (
+            <p className="mt-3">
+              <Button asChild variant="secondary" size="sm">
+                <a href={`/${orgSlug}/projects`}>Reconnect GitHub</a>
+              </Button>
+            </p>
+          ) : null}
+        </Alert>
+      ) : null}
 
       {connected ? (
         <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-3">

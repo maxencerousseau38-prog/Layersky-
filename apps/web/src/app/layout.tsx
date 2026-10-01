@@ -1,6 +1,7 @@
 import { AppSidebar } from '@/components/app-sidebar';
 import { AppTopbar } from '@/components/app-topbar';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { readShellContext } from '@/lib/shell-context';
 import { isSupabaseConfigured } from '@/lib/supabase/env';
 import { isPublicPath } from '@/lib/supabase/session';
 import {
@@ -87,8 +88,16 @@ const notoSansArabic = Noto_Sans_Arabic({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Localize Infra',
-    template: '%s · Localize Infra',
+    /*
+     * Layersky, the product. `localize-infra` stays wherever it is an
+     * identifier with consumers — the repository, the npm scope, the Vercel
+     * projects, and the GitHub App, whose display name GitHub reports as
+     * "Localize Infra". The three strings telling a reader what to authorise
+     * name that App and are deliberately unchanged: renaming them would make
+     * the instruction disagree with the screen GitHub shows.
+     */
+    default: 'Layersky',
+    template: '%s · Layersky',
   },
   description: 'Localization infrastructure for product teams.',
   // The app is not public content. Indexing it would surface screens that
@@ -131,6 +140,11 @@ export default async function RootLayout({
   const pathname = headerList.get('x-pathname');
   const inApp = pathname === null || !isPublicPath(pathname);
 
+  // Read once here rather than in the sidebar: the sidebar is a client
+  // component, and a second round trip for the reader's own address would be
+  // a request per navigation for something this render already knows.
+  const shell = inApp ? await readShellContext(pathname) : null;
+
   return (
     <html
       lang="en"
@@ -162,9 +176,17 @@ export default async function RootLayout({
           <TooltipProvider delayDuration={400}>
             {inApp ? (
               <SidebarProvider className="h-dvh min-h-0">
-                <AppSidebar sampleData={!isSupabaseConfigured()} />
+                <AppSidebar
+                  sampleData={!isSupabaseConfigured()}
+                  orgSlug={shell?.orgSlug ?? null}
+                  account={shell?.account ?? null}
+                />
                 <SidebarInset className="min-w-0 overflow-hidden">
-                  <AppTopbar />
+                  {/* The same validated slug the sidebar gets. The topbar
+                      needs it to name a workspace route in the breadcrumb, and
+                      taking it from `usePathname` there would relabel the bar
+                      for a workspace the reader is not a member of. */}
+                  <AppTopbar orgSlug={shell?.orgSlug ?? null} />
                   <main id="main" className="flex-1 overflow-y-auto">
                     {children}
                   </main>
