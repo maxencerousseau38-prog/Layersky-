@@ -835,8 +835,33 @@
 
   **« Checked 1 key », pas 12, et c'est la propriété qui rend l'outil
   utilisable.** Le catalogue anglais porte d'autres clés non traduites ; une PR
-  ne répond que de celles qu'elle **ajoute**, calculées contre `base.sha`.
+  ne répond que de celles qu'elle touche, calculées contre `base.sha`.
   Reprocher l'arriéré est la façon la plus sûre de faire désactiver un check.
+
+  **Ce point disait « celles qu'elle *ajoute* », et c'était la toute première
+  version.** La portée est **changé**, pas ajouté :
+  `changedCatalogueKeys` (`lib/i18n/analyse.ts`) prend l'union des clés de la
+  base et de la tête et garde celles dont la valeur diffère — donc une clé
+  ajoutée, une clé **modifiée** et une clé **supprimée** entrent toutes les
+  trois. Et pas seulement dans la locale source : `readBaseCatalogues` lit
+  **toute locale dont la PR touche le fichier**.
+
+  La raison est la PR #14 du fixture, et elle vaut mieux que la règle : avec une
+  portée limitée aux ajouts côté source, **retirer `{{name}}` d'une traduction
+  française existante ne produisait aucun finding** — la clé n'entrait dans
+  aucune portée. Dégrader une traduction qui existe est au moins aussi fréquent
+  qu'oublier d'en écrire une.
+
+  **Élargir ne fabrique pas de findings**, et c'est ce qui rend l'élargissement
+  gratuit : une clé dont les placeholders s'alignent toujours ne produit rien.
+  Le coût d'un gros commit de reformatage est une portée plus longue et un
+  résultat vide. Le `base.sha` continue de tenir l'arriéré dehors.
+
+  Constaté le 2026-10-02, après avoir prédit l'inverse : changer la valeur
+  allemande d'`app.tagline` — une clé qui existait déjà des deux côtés — a fait
+  répondre *« Checked **2** keys »*. La prédiction « 1, puisque la PR ne
+  l'ajoute pas » était fausse, et le produit avait raison : si vous modifiez une
+  traduction, le contrôle vérifie **cette** modification au lieu de l'ignorer.
 
   **La première version était aveugle au cas le plus fréquent.** Elle ne
   scannait que les fichiers source modifiés, donc une PR qui ne touche qu'un
