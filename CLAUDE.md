@@ -863,6 +863,22 @@
   l'ajoute pas » était fausse, et le produit avait raison : si vous modifiez une
   traduction, le contrôle vérifie **cette** modification au lieu de l'ignorer.
 
+  **Et « contre `base.sha` » veut dire le point de fork, pas la tête courante de
+  la base.** La distinction n'est pas un détail : sans elle, fusionner un
+  travail sans rapport dans `main` ferait apparaître des findings sur **toutes**
+  les PR ouvertes, chacune paraissant avoir perdu les clés que `main` vient de
+  gagner. C'est exactement le bruit qui fait désactiver un check, et c'est le
+  même argument que « ne pas reprocher l'arriéré », appliqué au temps plutôt
+  qu'au volume.
+
+  Mesuré le 2026-10-02, encore après avoir prédit l'inverse. La PR #15 du
+  fixture a été fusionnée et `main` est passé à `1daefa3`, qui porte
+  `errors.timeout` ; la branche de la PR #14, plus ancienne, ne l'a pas.
+  Attendu : un `missing-source` artificiel, donc **3** findings. Obtenu : **2**,
+  parce que `pull_request.base.sha` vaut `d61b4f0`, le `main` d'où la branche
+  est issue, et que cette clé n'y existe pas. Une PR est jugée sur ce qu'elle
+  change, pas sur ce qui a bougé sous elle.
+
   **La première version était aveugle au cas le plus fréquent.** Elle ne
   scannait que les fichiers source modifiés, donc une PR qui ne touche qu'un
   catalogue produisait *« No translation keys were touched »* — exact sur ce
