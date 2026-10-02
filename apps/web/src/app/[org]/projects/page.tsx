@@ -8,6 +8,7 @@ import {
 } from '@/lib/data/workspace';
 import { readGitHubApp } from '@/lib/github/config';
 import { loadFunnel } from '@/lib/metrics/load';
+import { Alert } from '@localize-infra/ui';
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -84,7 +85,7 @@ export default async function ProjectsPage({
     <Page>
       <PageHeader
         title={organization.name}
-        purpose="Each project points at one repository and the locales it ships."
+        purpose="Each project points at one repository and the locales it ships, for translating in bulk from the CLI."
         meta={
           <>
             <PageMeta label="Projects">{projects.length}</PageMeta>
@@ -96,6 +97,32 @@ export default async function ProjectsPage({
 
       <DeletedToast slug={deleted} />
       <GitHubResult reason={github} />
+
+      {/*
+       * What a project is *not* for, said once, here.
+       *
+       * Two paths share this workspace and only one of them needs a project.
+       * The health check reacts to the GitHub App installation — it reads no
+       * project row, no target locales, no token — so a reader who lands here
+       * first could reasonably conclude that configuring a project is how the
+       * product is turned on, and that nothing happens until they do. It is
+       * already happening.
+       *
+       * Neutral, not amber: nothing is degraded. This is a signpost between
+       * two working surfaces (DESIGN.md §6.3).
+       */}
+      <Alert tone="neutral" className="max-w-[72ch] px-4 py-3 leading-6">
+        Projects are for the bulk CLI path. Layersky&rsquo;s health check runs
+        on every pull request your GitHub installation can see and needs no
+        project —{' '}
+        <Link
+          href={`/${org}/health`}
+          className="text-link underline underline-offset-2 hover:text-link-hover"
+        >
+          see what it has found
+        </Link>
+        .
+      </Alert>
 
       {/*
         One line where there were two paragraphs, and now above the work

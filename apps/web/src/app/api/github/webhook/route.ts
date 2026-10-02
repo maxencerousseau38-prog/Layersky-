@@ -2,6 +2,8 @@ import {
   CHECK_NAME,
   type ChecksApi,
   type CorrectionReport,
+  buildCheckOutput,
+  checkConclusion,
   publishAnalysisFailure,
   publishCheck,
 } from '@/lib/github/checks';
@@ -17,6 +19,7 @@ import {
   checkoutReader,
   correctionBody,
 } from '@/lib/i18n/correct-run';
+import { describeFindings, recordCheck } from '@/lib/i18n/record-check';
 import { chargeWorkspace } from '@/lib/quota/charge';
 import { resolveInstallationWorkspace } from '@/lib/quota/installation';
 import { loadI18nextCatalogues } from '@localize-infra/core';
@@ -243,6 +246,19 @@ async function handleDelivery(
      */
     checks = octokit.rest.checks as unknown as ChecksApi;
 
+    /*
+     * Who this delivery belongs to, asked once.
+     *
+     * It used to be resolved inside `correct()`, which meant a repository whose
+     * check found nothing — or whose correction never ran — was never
+     * attributed to a workspace and so never indexed. The dashboard would then
+     * show only the deliveries that happened to spend money, which is the
+     * wrong half.
+     */
+    const workspace = await resolveInstallationWorkspace(
+      decision.installationId,
+    );
+
     const files = await octokit.paginate(octokit.rest.pulls.listFiles, {
       owner: decision.owner,
       repo: decision.repo,
@@ -321,6 +337,42 @@ async function handleDelivery(
     published = true;
 
     /*
+     * Indexed for the product, after the check and never before it.
+     *
+     * `checkConclusion` rather than a second `findings.length > 0` test: the
+     * row has to carry the verdict the commit shows, and two copies of that
+     * rule would drift the day `failure` becomes allowed.
+     */
+    if (workspace.organizationId) {
+      const output = buildCheckOutput(report, analysis.skipped);
+      await recordCheck({
+        organizationId: workspace.organizationId,
+        owner: decision.owner,
+        repo: decision.repo,
+        pullNumber: decision.pullNumber,
+        headSha: decision.headSha,
+        conclusion: checkConclusion(report, analysis.skipped),
+        title: output.title,
+        summary: output.summary,
+        // Null, not zero, when nothing was analysed. "Analysed and found
+        // nothing" and "could not analyse" must not collapse into one number.
+        keysChecked: analysis.skipped ? null : report.keysChecked,
+        localesChecked: report.localesChecked,
+        skippedReason: analysis.skipped,
+        checkRunId,
+        checkRunUrl: `https://github.com/${decision.owner}/${decision.repo}/runs/${checkRunId}`,
+        findings: analysis.audited
+          ? describeFindings({
+              report,
+              catalogues: analysis.audited.catalogues,
+              sourceLocale: SOURCE_LOCALE,
+            })
+          : [],
+        correction: null,
+      });
+    }
+
+    /*
      * The correction, after the check and never instead of it. The check is the
      * product's promise and costs nothing, so it is published before anything
      * that can fail or run long; a correction that dies leaves the reviewer
@@ -335,6 +387,7 @@ async function handleDelivery(
       report,
       audited,
       checkoutDir: materialised.dir,
+      workspace,
     });
 
     /*
@@ -357,6 +410,49 @@ async function handleDelivery(
       checkRunId,
       correction,
     });
+
+    /*
+     * The correction, indexed. A second call rather than one write at the end,
+     * because the findings must be stored even when the correction throws or
+     * never runs — and `record_i18n_check` coalesces, so this call updates the
+     * correction columns without touching the findings the first one stored.
+     */
+    if (workspace.organizationId) {
+      const output = buildCheckOutput(report, analysis.skipped, correction);
+      await recordCheck({
+        organizationId: workspace.organizationId,
+        owner: decision.owner,
+        repo: decision.repo,
+        pullNumber: decision.pullNumber,
+        headSha: decision.headSha,
+        conclusion: checkConclusion(report, analysis.skipped),
+        title: output.title,
+        summary: output.summary,
+        keysChecked: analysis.skipped ? null : report.keysChecked,
+        localesChecked: report.localesChecked,
+        skippedReason: analysis.skipped,
+        checkRunId,
+        checkRunUrl: `https://github.com/${decision.owner}/${decision.repo}/runs/${checkRunId}`,
+        findings: null,
+        correction: correction.attempted
+          ? {
+              requested: correction.requested,
+              applied: correction.applied,
+              refused: correction.refusals.length,
+              note: correction.reason,
+              prNumber: correction.pr?.number ?? null,
+              prUrl: correction.pr?.url ?? null,
+            }
+          : {
+              requested: 0,
+              applied: 0,
+              refused: 0,
+              note: correction.reason,
+              prNumber: null,
+              prUrl: null,
+            },
+      });
+    }
   } catch (error) {
     /*
      * Logged with the pull request it belongs to, because the response that
@@ -401,6 +497,8 @@ async function correct(args: {
     Awaited<ReturnType<typeof analysePullRequest>>['audited']
   >;
   checkoutDir: string;
+  /** Resolved once by the caller, so a delivery does one lookup, not two. */
+  workspace: Awaited<ReturnType<typeof resolveInstallationWorkspace>>;
 }): Promise<CorrectionReport> {
   const apiUrl = process.env.LOCALIZE_API_URL;
   const apiToken = process.env.LOCALIZE_API_TOKEN;
@@ -425,17 +523,14 @@ async function correct(args: {
   }
 
   /*
-   * Who pays, asked before anything is planned.
+   * Who pays. Resolved by the caller now, because the index needs it too and a
+   * delivery should do that lookup once — see `handleDelivery`.
    *
-   * A delivery names an installation and `organization_github_installations`
-   * turns that into a workspace — the row has existed since `20260817000600`
-   * and nothing on this path was reading it. Unresolvable means no correction:
-   * spending on behalf of a workspace that cannot be identified is spending
-   * nobody is accountable for, which is the whole defect this closes.
+   * Unresolvable still means no correction: spending on behalf of a workspace
+   * that cannot be identified is spending nobody is accountable for, which is
+   * the defect #133 closed.
    */
-  const workspace = await resolveInstallationWorkspace(
-    args.decision.installationId,
-  );
+  const workspace = args.workspace;
   /*
    * `=== null`, not `!`. The union discriminates on `organizationId` being a
    * string or null, and a truthiness test cannot rule out the empty string — so

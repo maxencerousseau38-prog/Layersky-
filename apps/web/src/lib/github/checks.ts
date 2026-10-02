@@ -252,6 +252,24 @@ export function buildCheckOutput(
   });
 }
 
+/**
+ * The conclusion, as one exported rule.
+ *
+ * `neutral` for both a skip and a finding, `success` only for a clean audit
+ * that actually ran. A skip is not a pass and must not be coloured like one.
+ *
+ * Exported because a second reader needs it: the row `lib/i18n/record-check.ts`
+ * stores has to carry the same verdict the commit shows, and recomputing
+ * `skipped || findings.length > 0` there would be the same rule written twice,
+ * free to drift the day `failure` becomes allowed.
+ */
+export function checkConclusion(
+  report: AuditReport,
+  skipped: string | null,
+): 'success' | 'neutral' {
+  return skipped || report.findings.length > 0 ? 'neutral' : 'success';
+}
+
 export interface PublishArgs {
   checks: ChecksApi;
   owner: string;
@@ -291,12 +309,7 @@ export async function publishCheck(args: PublishArgs): Promise<number> {
     args.skipped ?? null,
     args.correction ?? null,
   );
-  /*
-   * `neutral` for both a skip and a finding, `success` only for a clean audit
-   * that actually ran. A skip is not a pass and must not be coloured like one.
-   */
-  const conclusion =
-    args.skipped || args.report.findings.length > 0 ? 'neutral' : 'success';
+  const conclusion = checkConclusion(args.report, args.skipped ?? null);
 
   const common = {
     owner: args.owner,

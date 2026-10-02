@@ -75,13 +75,36 @@ describe('workspaceNav', () => {
     }
   });
 
-  it('names the four surfaces the shell was missing', () => {
+  /*
+   * Health comes first, and the order is the assertion.
+   *
+   * This read "the four surfaces the shell was missing" and listed them from
+   * Projects. The guardrail — pull request in, check out, corrective pull
+   * request when the fix is safe — had no entry at all, so the product that
+   * runs continuously was the one the navigation did not name. Ranking by
+   * frequency of use (DESIGN.md §9), a check that fires on every pull request
+   * outranks a setup flow somebody walks once.
+   */
+  it('names the workspace surfaces, health first', () => {
     expect(workspaceNav('acme').map((r) => r.href)).toEqual([
+      '/acme/health',
       '/acme/projects',
       '/acme/start',
       '/acme/tokens',
       '/acme/usage',
     ]);
+  });
+
+  /*
+   * The detail route resolves to its parent, which is what gives it a way
+   * back. A nested route absent from the nav list used to leave the breadcrumb
+   * reading just the product name — the defect `resolveRoute` was written for,
+   * and a brand-new nested route is exactly where it would recur.
+   */
+  it('resolves a health check detail page back to Health', () => {
+    const { route, detail } = resolveRoute('/acme/health/abc-123', 'acme');
+    expect(route?.href).toBe('/acme/health');
+    expect(detail).toBe('abc-123');
   });
 
   /*
@@ -95,7 +118,7 @@ describe('workspaceNav', () => {
     );
   });
 
-  it('marks nothing as unbuilt, because all four read the database', () => {
+  it('marks nothing as unbuilt, because every one reads the database', () => {
     for (const route of workspaceNav('acme')) {
       expect(route.built, route.href).toBe(true);
     }

@@ -43,6 +43,7 @@ const input = (over: Partial<OnboardingInput> = {}): OnboardingInput => ({
   projects: [],
   activeTokens: 0,
   runs: [],
+  healthChecks: 0,
   ...over,
 });
 
@@ -57,7 +58,9 @@ describe('a brand-new workspace', () => {
 
   it('has the workspace step done and nothing else', () => {
     expect(fresh.done).toBe(1);
-    expect(fresh.total).toBe(6);
+    // Three, not six. The four CLI steps described the legacy pipeline, which
+    // the health check needs none of — see the file's own docstring.
+    expect(fresh.total).toBe(3);
     expect(byId(fresh, 'workspace').status).toBe('done');
   });
 
@@ -67,21 +70,20 @@ describe('a brand-new workspace', () => {
   });
 
   it('marks every later step todo, not current', () => {
-    for (const id of ['repository', 'token', 'run', 'pull_request']) {
-      expect(byId(fresh, id).status, id).toBe('todo');
-    }
+    expect(byId(fresh, 'health_check').status).toBe('todo');
   });
 
   it('gives no tone to a step that has not been reached', () => {
     // DESIGN.md §6.3: a thing that does not exist yet has no state to report.
-    for (const id of ['github', 'repository', 'token', 'run', 'pull_request']) {
+    // In particular a workspace waiting for its first check is not degraded.
+    for (const id of ['github', 'health_check']) {
       expect(byId(fresh, id).tone, id).toBeNull();
     }
   });
 
   it('shows no detail rather than a placeholder', () => {
     expect(byId(fresh, 'github').detail).toBeNull();
-    expect(byId(fresh, 'run').detail).toBeNull();
+    expect(byId(fresh, 'health_check').detail).toBeNull();
   });
 
   it('is not activated and offers no command project', () => {
@@ -95,16 +97,8 @@ describe('exactly one step is current', () => {
     ['nothing done', input()],
     ['github only', input({ githubAccountLogin: 'acme' })],
     [
-      'github and repository',
+      'github connected, no check yet',
       input({ githubAccountLogin: 'acme', projects: [project()] }),
-    ],
-    [
-      'up to the token',
-      input({
-        githubAccountLogin: 'acme',
-        projects: [project()],
-        activeTokens: 1,
-      }),
     ],
   ];
 
@@ -117,8 +111,25 @@ describe('exactly one step is current', () => {
     });
   }
 
-  it('has none once every step is done', () => {
+  /*
+   * Done means a check has arrived, not that a pull request was opened.
+   *
+   * `activated` was `runsWithPr.length > 0` — the legacy finish line. A
+   * workspace can be fully working now without ever starting a run, and the
+   * old definition would have told it it had not arrived.
+   */
+  it('has none once a check has arrived', () => {
     const done = buildOnboarding(
+      input({ githubAccountLogin: 'acme', healthChecks: 1 }),
+    );
+    expect(done.current).toBeNull();
+    expect(done.steps.filter((s) => s.status === 'current')).toHaveLength(0);
+    expect(done.done).toBe(3);
+    expect(done.activated).toBe(true);
+  });
+
+  it('is not activated by a run that opened a pull request', () => {
+    const cliOnly = buildOnboarding(
       input({
         githubAccountLogin: 'acme',
         projects: [project()],
@@ -126,10 +137,8 @@ describe('exactly one step is current', () => {
         runs: [run()],
       }),
     );
-    expect(done.current).toBeNull();
-    expect(done.steps.filter((s) => s.status === 'current')).toHaveLength(0);
-    expect(done.done).toBe(6);
-    expect(done.activated).toBe(true);
+    expect(cliOnly.activated).toBe(false);
+    expect(cliOnly.current).toBe('health_check');
   });
 });
 
@@ -167,68 +176,43 @@ describe('a deployment that cannot offer the GitHub flow', () => {
   });
 });
 
-describe('runs that did not reach a pull request', () => {
-  it('reports every-run-failed as failed, and still counts the step done', () => {
-    const result = buildOnboarding(
-      input({
-        githubAccountLogin: 'acme',
-        projects: [project()],
-        activeTokens: 1,
-        runs: [run({ status: 'failed', pr_url: null })],
-      }),
-    );
-    const step = byId(result, 'run');
-    expect(step.status).toBe('done');
-    expect(step.tone).toBe('failed');
-    expect(step.problem).toContain('failed');
-  });
-
-  it('does not call it failed when one run succeeded', () => {
-    const result = buildOnboarding(
-      input({
-        runs: [run({ status: 'failed', pr_url: null }), run({ pr_url: null })],
-      }),
-    );
-    expect(byId(result, 'run').tone).toBe('confident');
-    expect(byId(result, 'run').problem).toBeNull();
-  });
-
-  it('uses Iris only for a run waiting on a human decision', () => {
-    const result = buildOnboarding(
-      input({ runs: [run({ status: 'awaiting_review', pr_url: null })] }),
-    );
-    const step = byId(result, 'pull_request');
-    expect(step.tone).toBe('ambiguous');
-    expect(step.problem).toContain('stopped to ask a question');
-  });
-
-  it('never uses Iris anywhere else, in any of these states', () => {
+/*
+ * The Iris rule, kept after the steps it was written against were removed.
+ *
+ * It used to be proved by a run waiting on a human decision — the one place in
+ * the old six-step path that earned the colour. That step is gone, and the
+ * rule is not: DESIGN.md §1.4 reserves Iris for "your judgement is required",
+ * and nothing in a three-step path to a first check ever is. The check itself
+ * has findings that need a judgement, and they are coloured on the health
+ * screen, which is where the reader can act on them.
+ */
+describe('Iris', () => {
+  it('appears nowhere in this path, in any state', () => {
     const states: OnboardingRun['status'][] = [
       'queued',
       'running',
       'succeeded',
       'partial',
       'failed',
+      'awaiting_review',
       'no_changes',
     ];
     for (const status of states) {
-      const result = buildOnboarding(
-        input({ runs: [run({ status, pr_url: null })] }),
-      );
-      for (const step of result.steps) {
-        expect(step.tone, `${status}/${step.id}`).not.toBe('ambiguous');
+      for (const checks of [0, 1]) {
+        const result = buildOnboarding(
+          input({
+            githubAccountLogin: 'acme',
+            runs: [run({ status, pr_url: null })],
+            healthChecks: checks,
+          }),
+        );
+        for (const step of result.steps) {
+          expect(step.tone, `${status}/${checks}/${step.id}`).not.toBe(
+            'ambiguous',
+          );
+        }
       }
     }
-  });
-
-  it('prefers the pull request over the question once one is open', () => {
-    const result = buildOnboarding(
-      input({
-        runs: [run({ status: 'awaiting_review', pr_url: null }), run()],
-      }),
-    );
-    expect(byId(result, 'pull_request').tone).toBe('confident');
-    expect(byId(result, 'pull_request').problem).toBeNull();
   });
 });
 
@@ -262,15 +246,6 @@ describe('the project a command is built for', () => {
     );
     expect(result.commandProject?.slug).toBe('usable');
   });
-
-  it('counts the repository step done even when the project is unusable', () => {
-    // The repository *is* connected; what is missing is a target locale, and
-    // that is a different sentence the project page already tells.
-    const result = buildOnboarding(
-      input({ projects: [project({ targetLocales: [] })] }),
-    );
-    expect(byId(result, 'repository').status).toBe('done');
-  });
 });
 
 describe('detail lines report rows, not intentions', () => {
@@ -279,27 +254,12 @@ describe('detail lines report rows, not intentions', () => {
     expect(byId(result, 'github').detail).toBe('octo-corp');
   });
 
-  it('lists every connected repository', () => {
-    const result = buildOnboarding(
-      input({
-        projects: [
-          project({ repositoryName: 'one' }),
-          project({ repositoryName: 'two' }),
-        ],
-      }),
-    );
-    expect(byId(result, 'repository').detail).toBe('acme/one, acme/two');
-  });
-
   it('pluralises counts it prints', () => {
     expect(
-      byId(buildOnboarding(input({ activeTokens: 1 })), 'token').detail,
-    ).toBe('1 active token');
+      byId(buildOnboarding(input({ healthChecks: 1 })), 'health_check').detail,
+    ).toBe('1 check');
     expect(
-      byId(buildOnboarding(input({ activeTokens: 3 })), 'token').detail,
-    ).toBe('3 active tokens');
-    expect(byId(buildOnboarding(input({ runs: [run()] })), 'run').detail).toBe(
-      '1 run',
-    );
+      byId(buildOnboarding(input({ healthChecks: 4 })), 'health_check').detail,
+    ).toBe('4 checks');
   });
 });
