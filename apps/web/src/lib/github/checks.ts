@@ -340,3 +340,74 @@ export async function publishCheck(args: PublishArgs): Promise<number> {
   const created = await args.checks.create(common);
   return created.data.id;
 }
+
+/**
+ * Tell the reviewer the analysis broke, on the check.
+ *
+ * This replaces the 200-with-a-reason the webhook used to return. That reply at
+ * least reached GitHub's delivery log; since the handler now answers before it
+ * does any work, a failure would otherwise be silence on the pull request — and
+ * silence reads as approval, the fault this product sells against.
+ *
+ * `skipped` is the right channel and needs no new rendering: it comes out as
+ * "Not analysed" with a `neutral` conclusion, which is exactly what a failed
+ * analysis is. Never `success`.
+ *
+ * ## It refuses to overwrite a check that already said something
+ *
+ * `alreadyPublished` is the whole point of this function existing rather than a
+ * bare call to `publishCheck`. If the failure happened *after* the findings were
+ * published — a correction that threw, say — then writing here would replace
+ * "6 i18n problems" with "Not analysed" and destroy the one thing the reviewer
+ * had. A later failure is a worse report than the earlier success, so it is not
+ * written at all; the log keeps it.
+ *
+ * Returns what it did, so a caller — and a test — can tell the three outcomes
+ * apart instead of inferring them.
+ */
+export async function publishAnalysisFailure(args: {
+  /** Null when the client could not even be built. Then only the log has it. */
+  checks: ChecksApi | null;
+  owner: string;
+  repo: string;
+  headSha: string;
+  error: unknown;
+  /** True once a real check exists for this commit. */
+  alreadyPublished: boolean;
+}): Promise<'written' | 'skipped' | 'failed'> {
+  if (args.alreadyPublished || !args.checks) return 'skipped';
+
+  const detail =
+    args.error instanceof Error ? args.error.message : String(args.error);
+
+  try {
+    await publishCheck({
+      checks: args.checks,
+      owner: args.owner,
+      repo: args.repo,
+      headSha: args.headSha,
+      report: {
+        findings: [],
+        keysChecked: 0,
+        localesChecked: [],
+        dynamicCallSites: 0,
+        unreferencedSourceKeys: 0,
+      },
+      // Truncated, because a stack-carrying provider error can be long and the
+      // check body has a limit. Verbatim up to that point (DESIGN.md §8).
+      skipped: `Layersky could not analyse this pull request: ${detail.slice(0, 500)}`,
+    });
+    return 'written';
+  } catch (secondary) {
+    /*
+     * Best-effort by necessity: if GitHub is what broke, there is nothing to
+     * write with. Logged rather than rethrown — this runs inside a catch whose
+     * request is already closed.
+     */
+    console.error(
+      'the analysis-failure check could not be written either:',
+      secondary,
+    );
+    return 'failed';
+  }
+}
