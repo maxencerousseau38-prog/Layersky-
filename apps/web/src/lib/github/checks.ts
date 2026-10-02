@@ -24,6 +24,24 @@ import type { AuditReport, Finding } from '@localize-infra/eval';
  * same findings, in the same place, and blocks nothing. It can become `failure`
  * the day somebody asks for it, which is the direction that does not require an
  * apology.
+ *
+ * ## It also carries what the correction did, and that is why
+ *
+ * The correction used to report itself in the webhook's HTTP response. That
+ * response is never read: measured against production on 2026-10-02, GitHub
+ * starts the delivery, waits its 10 seconds and gives up — the quota charge
+ * alone landed at 9.2s, with the model call after it — so the delivery log
+ * stores `context deadline exceeded` where the body should be. Every delivery
+ * that corrects was recorded as a 500; the only 200 was the one the webhook
+ * declined instantly.
+ *
+ * So the one place a human reads is this check, and the correction's own
+ * reconciliation — asked for, added, left — is appended to it. That costs no
+ * queue and no table for the same reason the check itself does not: GitHub keys
+ * check runs by `(name, head_sha)`, so the second write updates the first.
+ *
+ * The verdict does not move. Title and conclusion still describe *this* commit's
+ * findings, because the correction's effect only exists on the next one.
  */
 
 export const CHECK_NAME = 'Layersky i18n';
@@ -61,6 +79,98 @@ function describeFinding(finding: Finding): string {
 }
 
 /**
+ * What the automatic correction did, in a shape this module can render.
+ *
+ * A union rather than a bag of optional fields, because "it was not attempted"
+ * and "it was attempted and wrote nothing" are different things to read and
+ * were previously the same object with different keys filled in.
+ */
+export type CorrectionReport =
+  | { attempted: false; reason: string }
+  | {
+      attempted: true;
+      /** Translations the correction set out to make. */
+      requested: number;
+      /** Translations written. */
+      applied: number;
+      /** Every one that was not written, and why. */
+      refusals: { locale: string; key: string; reason: string }[];
+      /** The corrective pull request, when one was opened. */
+      pr: { number: number; url: string } | null;
+      /** Why nothing was opened, when nothing was. */
+      reason: string | null;
+    };
+
+/** Refusals printed before the list is cut. The ceiling is 40, so this is most. */
+const MAX_LISTED_REFUSALS = 20;
+
+/**
+ * The correction's section of the check.
+ *
+ * Pure, so the sentence a reviewer reads is pinned by a test rather than by a
+ * production run — which is how the last two defects here were found.
+ */
+export function describeCorrection(correction: CorrectionReport): string {
+  const heading = '### Automatic correction';
+
+  if (!correction.attempted) {
+    return `${heading}\n\nNot attempted: ${correction.reason}`;
+  }
+
+  if (correction.requested === 0) {
+    return `${heading}\n\nNothing was translated. ${correction.reason ?? 'No reason was recorded.'}`;
+  }
+
+  const lines = [
+    heading,
+    '',
+    `**${correction.requested} asked for · ${correction.applied} added · ${correction.refusals.length} left for a person.**`,
+    '',
+  ];
+
+  /*
+   * The arithmetic, checked where a human can see it. `buildCorrection`
+   * guarantees it reconciles; saying so here means a day when it does not is
+   * visible on the pull request rather than only in a test — and the words name
+   * it as our bug, not the model's.
+   */
+  if (
+    correction.applied + correction.refusals.length !==
+    correction.requested
+  ) {
+    lines.push(
+      `⚠️ Those numbers do not add up, which is a defect in Layersky: ${correction.requested} were asked for but only ${correction.applied + correction.refusals.length} are accounted for.`,
+      '',
+    );
+  }
+
+  if (correction.pr) {
+    lines.push(
+      `A corrective pull request is open: #${correction.pr.number} — ${correction.pr.url}`,
+      '',
+    );
+  } else if (correction.reason) {
+    lines.push(`No pull request was opened: ${correction.reason}`, '');
+  }
+
+  if (correction.refusals.length > 0) {
+    lines.push('Left for a person:', '');
+    for (const refusal of correction.refusals.slice(0, MAX_LISTED_REFUSALS)) {
+      lines.push(
+        `- **${refusal.locale}** — \`${refusal.key}\`: ${refusal.reason}`,
+      );
+    }
+    if (correction.refusals.length > MAX_LISTED_REFUSALS) {
+      lines.push(
+        `- …and ${correction.refusals.length - MAX_LISTED_REFUSALS} more.`,
+      );
+    }
+  }
+
+  return lines.join('\n').trimEnd();
+}
+
+/**
  * Turn a report into the words on the check.
  *
  * Pure, and separate from the API call, because this is the part worth
@@ -69,7 +179,21 @@ function describeFinding(finding: Finding): string {
 export function buildCheckOutput(
   report: AuditReport,
   skipped: string | null = null,
+  correction: CorrectionReport | null = null,
 ): CheckOutput {
+  /*
+   * Appended in every branch, including the skipped and the clean ones. A
+   * correction that ran must be reported wherever the check ends up, and
+   * "except on that path" is how the last hole was shaped.
+   */
+  const withCorrection = (output: CheckOutput): CheckOutput =>
+    correction
+      ? {
+          ...output,
+          summary: `${output.summary}\n\n${describeCorrection(correction)}`,
+        }
+      : output;
+
   /*
    * A repository this could not analyse gets a check that says why, not a
    * green one. "No problems found" over a repository nothing was read from is
@@ -78,7 +202,7 @@ export function buildCheckOutput(
    * is selling against.
    */
   if (skipped) {
-    return { title: 'Not analysed', summary: skipped };
+    return withCorrection({ title: 'Not analysed', summary: skipped });
   }
 
   const { findings } = report;
@@ -101,10 +225,10 @@ export function buildCheckOutput(
       : '';
 
   if (findings.length === 0) {
-    return {
+    return withCorrection({
       title: 'No i18n problems found',
       summary: `${scope}${limits}`,
-    };
+    });
   }
 
   const byKind = new Map<string, number>();
@@ -121,11 +245,11 @@ export function buildCheckOutput(
       ? `\n\n…and ${findings.length - MAX_LISTED} more.`
       : '';
 
-  return {
+  return withCorrection({
     title: `${findings.length} i18n problem${findings.length === 1 ? '' : 's'}`,
     summary: `${scope}${limits}\n\n**Found:** ${breakdown}.`,
     text: `${listed.join('\n')}${remainder}`,
-  };
+  });
 }
 
 export interface PublishArgs {
@@ -136,6 +260,23 @@ export interface PublishArgs {
   report: AuditReport;
   /** Why no audit ran, when none did. The check says so rather than passing. */
   skipped?: string | null;
+  /**
+   * What the correction did, appended to the check's summary.
+   *
+   * The second call of a delivery passes this. Reusing this function rather
+   * than writing an updater means one place composes the output and one place
+   * decides create-or-update — the alternative is two bodies free to disagree
+   * about what a reviewer sees.
+   */
+  correction?: CorrectionReport | null;
+  /**
+   * The run to update, when the caller already knows it.
+   *
+   * Not an optimisation. Without it the second call lists again, and the
+   * fallback for a failed list is to *create* — which on the second call would
+   * put a duplicate check on the commit instead of updating the first.
+   */
+  checkRunId?: number | null;
 }
 
 /**
@@ -145,7 +286,11 @@ export interface PublishArgs {
  * only way to tell an update from a duplicate after the fact.
  */
 export async function publishCheck(args: PublishArgs): Promise<number> {
-  const output = buildCheckOutput(args.report, args.skipped ?? null);
+  const output = buildCheckOutput(
+    args.report,
+    args.skipped ?? null,
+    args.correction ?? null,
+  );
   /*
    * `neutral` for both a skip and a finding, `success` only for a clean audit
    * that actually ran. A skip is not a pass and must not be coloured like one.
@@ -169,17 +314,19 @@ export async function publishCheck(args: PublishArgs): Promise<number> {
    * rather than skipped. A duplicate check is a cosmetic problem; no check at
    * all is the reviewer getting silence and reading it as a pass.
    */
-  let existingId: number | null = null;
-  try {
-    const existing = await args.checks.listForRef({
-      owner: args.owner,
-      repo: args.repo,
-      ref: args.headSha,
-      check_name: CHECK_NAME,
-    });
-    existingId = existing.data.check_runs[0]?.id ?? null;
-  } catch {
-    existingId = null;
+  let existingId: number | null = args.checkRunId ?? null;
+  if (existingId === null) {
+    try {
+      const existing = await args.checks.listForRef({
+        owner: args.owner,
+        repo: args.repo,
+        ref: args.headSha,
+        check_name: CHECK_NAME,
+      });
+      existingId = existing.data.check_runs[0]?.id ?? null;
+    } catch {
+      existingId = null;
+    }
   }
 
   if (existingId !== null) {
