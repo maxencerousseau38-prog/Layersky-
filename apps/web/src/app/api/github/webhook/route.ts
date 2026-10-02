@@ -1,6 +1,8 @@
 import {
   CHECK_NAME,
+  type ChecksApi,
   type CorrectionReport,
+  publishAnalysisFailure,
   publishCheck,
 } from '@/lib/github/checks';
 import { readGitHubApp } from '@/lib/github/config';
@@ -45,27 +47,38 @@ import { App } from 'octokit';
  * signature answers 401, because that one genuinely should be visible in the
  * delivery log.
  *
- * ## Two timeouts, not one, and this paragraph used to know about only the first
+ * ## Two timeouts, not one, and the shorter one decides the shape of this file
  *
- * Vercel's is 300 seconds. **GitHub's is ten**, for the delivery, and that is
- * the one that bit. The analysis is pure computation and fits; the correction
- * calls a model and does not. Measured on 2026-10-02: the quota charge landed
- * at 9.2s with the model call after it, so every delivery that corrected was
- * recorded as `context deadline exceeded` — a 500 in the delivery log, and the
- * response body, which carried the correction's report, discarded unread.
- * GitHub gave up after one attempt, so no retry storm; but a hook that
- * accumulates failures gets disabled.
+ * Vercel's is 300 seconds. **GitHub's is ten**, for the delivery, and it is the
+ * one that bit — twice, because the first fix was aimed at the wrong half.
  *
- * So the response goes out as soon as the check is published, and the
- * correction runs in `after`. Still no queue: the work happens in this same
- * invocation, still bounded by `MAX_CORRECTION_UNITS` before any of it starts,
- * still lost if the function dies. What changed is who hears about it — the
- * correction now reports itself onto the check run, the one surface a human
- * reads, instead of into a response nobody receives.
+ * Moving the *correction* into `after` was the first attempt. The delivery still
+ * died at **10.003 s**, GitHub's limit to the millisecond, because the analysis
+ * exceeds it on its own: `materialiseRepository` downloads and unpacks a
+ * repository tarball before anything is read. The quota charge moved from 9.2 s
+ * to 11.5 s, which is to say from *just* too late to plainly too late. Six
+ * consecutive deliveries were recorded as 500 `context deadline exceeded`.
  *
- * The ordering still carries the rest. The check is published *before* the
- * correction is attempted, so a correction that dies leaves the reviewer told
- * what is wrong — the finding is the product's promise, the fix is the
+ * So the split is now where the network begins. Everything before the response
+ * is an env read, one HMAC and one `JSON.parse`; everything that touches GitHub
+ * is in `handleDelivery`, after. GitHub gets its 200 in milliseconds, which
+ * matters beyond tidiness: it gave up after one attempt each time, so there was
+ * no retry storm, but a hook that accumulates failures gets disabled.
+ *
+ * Still no queue, and it should not be mistaken for one: the work happens in
+ * this same invocation, still bounded by `MAX_CORRECTION_UNITS` before any of
+ * it starts, still lost if the function dies.
+ *
+ * **What it costs** is the thing to keep in view. Nothing after the response
+ * can be reported by returning, so a broken delivery can no longer answer with
+ * a sentence somebody will read in the delivery log. Two things replace it, and
+ * neither is free: every failure is logged with the pull request it belongs to,
+ * and every failure that can still reach GitHub is written onto the check as
+ * "Not analysed". A failure that cannot reach GitHub leaves only the log.
+ *
+ * The ordering inside still carries the rest. The check is published *before*
+ * the correction is attempted, so a correction that dies leaves the reviewer
+ * told what is wrong — the finding is the product's promise, the fix is the
  * convenience.
  *
  * ## And the ceiling is no longer the only thing bounding the spend
@@ -150,14 +163,86 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const app = new App({
-    appId: config.appId,
-    privateKey: config.privateKey,
-  });
-  const octokit = await app.getInstallationOctokit(decision.installationId);
+  /*
+   * The answer, now, before any network call.
+   *
+   * Everything above is env reads, one HMAC and one `JSON.parse` — microseconds.
+   * Everything below needs GitHub, and `materialiseRepository` alone downloads
+   * and unpacks a repository tarball.
+   *
+   * Measured on 2026-10-02, twice. Moving only the correction into `after` was
+   * not enough: the delivery still died at **10.003 s**, GitHub's limit to the
+   * millisecond, because the analysis exceeds it on its own. The quota charge
+   * moved from 9.2 s to 11.5 s, which is to say past the point where anybody
+   * was still listening.
+   *
+   * So the delivery is acknowledged here and the work happens after. Six
+   * consecutive deliveries were recorded as 500 `context deadline exceeded`
+   * before this, and a hook that accumulates failures gets disabled by GitHub.
+   */
+  after(() => handleDelivery(decision, config));
 
+  return ok('accepted', {
+    /*
+     * What was accepted, not what was found — nothing has been looked at yet.
+     * Claiming a finding count here would be the false success this product
+     * exists to remove, in its own webhook reply.
+     */
+    pullRequest: decision.pullNumber,
+    headSha: decision.headSha,
+    check: CHECK_NAME,
+  });
+}
+
+/** An audit that never ran. Reported as "not analysed", never as a pass. */
+const NO_REPORT: AuditReport = {
+  findings: [],
+  keysChecked: 0,
+  localesChecked: [],
+  dynamicCallSites: 0,
+  unreferencedSourceKeys: 0,
+};
+
+/**
+ * Everything that needs the network: analyse, publish, correct, clean up.
+ *
+ * Runs after the response, so **nothing it does can be reported by returning**.
+ * That is the trade this shape accepts, and it is why the two things below
+ * exist: every failure is logged with enough context to find the pull request
+ * it belongs to, and every failure that can still reach GitHub is written onto
+ * the check.
+ *
+ * It never throws. A rejection here would surface as an unhandled one in a
+ * function whose request is already closed, which is the least useful place a
+ * stack trace can land.
+ */
+async function handleDelivery(
+  decision: Extract<ReturnType<typeof decideWebhook>, { act: true }>,
+  config: NonNullable<ReturnType<typeof readGitHubApp>>,
+): Promise<void> {
+  const where = `${decision.owner}/${decision.repo}#${decision.pullNumber} (${decision.headSha})`;
   let checkout: string | null = null;
+  let checks: ChecksApi | null = null;
+  /*
+   * Flips the moment a check carrying real findings exists. After that a
+   * failure must not be written over it — see `publishAnalysisFailure`.
+   */
+  let published = false;
+
   try {
+    const app = new App({
+      appId: config.appId,
+      privateKey: config.privateKey,
+    });
+    const octokit = await app.getInstallationOctokit(decision.installationId);
+    /*
+     * Kept so a failure below still has something to write with. Cast because
+     * Octokit's generated signatures are narrower than `ChecksApi`, which is
+     * deliberately the three calls this product makes and nothing else — the
+     * same cast the `publishCheck` call sites make.
+     */
+    checks = octokit.rest.checks as unknown as ChecksApi;
+
     const files = await octokit.paginate(octokit.rest.pulls.listFiles, {
       owner: decision.owner,
       repo: decision.repo,
@@ -182,8 +267,7 @@ export async function POST(request: Request): Promise<Response> {
      * the same files the audit will read. The load is repeated inside
      * `analysePullRequest` — a handful of small JSON files from a temporary
      * directory — rather than threading a pre-loaded value through two call
-     * sites and creating a second code path that could disagree with the
-     * first.
+     * sites and creating a second code path that could disagree with the first.
      */
     const located = loadI18nextCatalogues(materialised.dir);
     const base =
@@ -224,13 +308,7 @@ export async function POST(request: Request): Promise<Response> {
      * a pull request reads as approval — the failure mode this product exists
      * to remove, reproduced by the thing meant to remove it.
      */
-    const report: AuditReport = analysis.report ?? {
-      findings: [],
-      keysChecked: 0,
-      localesChecked: [],
-      dynamicCallSites: 0,
-      unreferencedSourceKeys: 0,
-    };
+    const report: AuditReport = analysis.report ?? NO_REPORT;
 
     const checkRunId = await publishCheck({
       checks: octokit.rest.checks as never,
@@ -240,104 +318,58 @@ export async function POST(request: Request): Promise<Response> {
       report,
       skipped: analysis.skipped,
     });
+    published = true;
 
     /*
-     * The correction, after the check, after the response, and never instead
-     * of the check.
-     *
-     * Ordering matters twice over. The check is the product's promise and costs
-     * nothing, so it is published before anything that can fail. And the
-     * response is returned before the correction starts, because GitHub waits
-     * ten seconds and no longer: measured on 2026-10-02, the quota charge alone
-     * landed at 9.2s with the model call after it, so every delivery that
-     * corrected was recorded as `context deadline exceeded` — a 500 in the
-     * delivery log, and the body, which carried the correction's own report,
-     * discarded unread. Enough of those and GitHub disables the hook.
-     *
-     * `after` runs the rest once the response is sent. It is not a queue and
-     * does not pretend to be one: the work still happens inside this
-     * invocation, still bounded by `MAX_CORRECTION_UNITS`, still lost if the
-     * function dies. What changes is that GitHub gets its answer in time, and
-     * the correction reports itself on the check instead of into a response
-     * nobody receives.
+     * The correction, after the check and never instead of it. The check is the
+     * product's promise and costs nothing, so it is published before anything
+     * that can fail or run long; a correction that dies leaves the reviewer
+     * still told what is wrong.
      */
     const audited = analysis.audited;
-    const correcting = Boolean(audited) && report.findings.length > 0;
+    if (!audited || report.findings.length === 0) return;
 
-    if (audited && correcting) {
-      const checkoutDir = materialised.dir;
-      const skipped = analysis.skipped;
+    const correction = await correct({
+      octokit,
+      decision,
+      report,
+      audited,
+      checkoutDir: materialised.dir,
+    });
 
-      after(async () => {
-        try {
-          const correction = await correct({
-            octokit,
-            decision,
-            report,
-            audited,
-            checkoutDir,
-          });
-
-          /*
-           * The same `publishCheck`, with the run id it already returned.
-           * GitHub keys check runs by `(name, head_sha)`, so this updates the
-           * one above rather than stacking a second — and passing the id means
-           * a failed lookup cannot fall back to creating a duplicate.
-           */
-          await publishCheck({
-            checks: octokit.rest.checks as never,
-            owner: decision.owner,
-            repo: decision.repo,
-            headSha: decision.headSha,
-            report,
-            skipped,
-            checkRunId,
-            correction,
-          });
-        } catch (error) {
-          /*
-           * Nothing downstream will see this: the response is long gone and
-           * GitHub's delivery log holds a 200. The log line is the only record,
-           * so it is logged whole.
-           */
-          console.error('i18n correction (after response) failed:', error);
-        } finally {
-          await discardCheckout(checkoutDir);
-        }
-      });
-
-      /*
-       * Ownership of the checkout moves to the task above, so the handler's
-       * `finally` must not delete it. Assigned only once `after` has accepted
-       * the callback: the other order would leak the directory if it threw.
-       */
-      checkout = null;
-    }
-
-    return ok('analysed', {
-      check: CHECK_NAME,
-      checkRunId,
-      findings: report.findings.length,
+    /*
+     * The same `publishCheck`, with the run id it already returned. GitHub keys
+     * check runs by `(name, head_sha)`, so this updates the one above rather
+     * than stacking a second — and passing the id means a failed lookup cannot
+     * fall back to creating a duplicate.
+     *
+     * This is the only surface the correction has. A total refusal opens no
+     * pull request, so without this write the reason exists nowhere: that is
+     * exactly what happened on 2026-10-02 at 14:37 UTC.
+     */
+    await publishCheck({
+      checks: octokit.rest.checks as never,
+      owner: decision.owner,
+      repo: decision.repo,
+      headSha: decision.headSha,
+      report,
       skipped: analysis.skipped,
-      catalogueFilesCompared: base.touched.length,
-      /*
-       * Whether a correction is running, not what it did — it has not started
-       * yet. What it did goes on the check.
-       */
-      correcting,
+      checkRunId,
+      correction,
     });
   } catch (error) {
     /*
-     * Logged whole, answered as one sentence, and answered 200.
-     *
-     * A 5xx makes GitHub retry, and every retry re-downloads the repository to
-     * reach the same failure. Whatever broke here — a missing `checks: write`
-     * permission being the likeliest — will not be fixed by doing it four more
-     * times.
+     * Logged with the pull request it belongs to, because the response that
+     * used to carry this is gone. One line, greppable, and the whole error.
      */
-    console.error('i18n webhook analysis failed:', error);
-    return ok('analysis failed', {
-      error: error instanceof Error ? error.message : String(error),
+    console.error(`i18n delivery failed for ${where}:`, error);
+    await publishAnalysisFailure({
+      checks,
+      owner: decision.owner,
+      repo: decision.repo,
+      headSha: decision.headSha,
+      error,
+      alreadyPublished: published,
     });
   } finally {
     await discardCheckout(checkout);

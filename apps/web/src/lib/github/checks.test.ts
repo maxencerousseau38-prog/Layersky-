@@ -4,6 +4,7 @@ import {
   CHECK_NAME,
   buildCheckOutput,
   describeCorrection,
+  publishAnalysisFailure,
   publishCheck,
 } from './checks';
 
@@ -421,5 +422,117 @@ describe('publishCheck, writing the correction onto the run it already made', ()
     expect(id).toBe(77);
     expect(calls.list).toBe(1);
     expect(calls.update).toHaveLength(1);
+  });
+});
+
+/**
+ * The failure report, which exists because the webhook no longer answers.
+ *
+ * The handler now returns 200 before it touches GitHub — it had to, GitHub's
+ * delivery timeout is 10 seconds and the analysis alone passed it (measured at
+ * 10.003s on 2026-10-02). The cost of that is the one thing these tests guard:
+ * a broken delivery can no longer report itself by returning, so it reports
+ * itself on the check instead.
+ */
+describe('publishAnalysisFailure', () => {
+  const api = () => {
+    const calls: { create: Record<string, unknown>[] } = { create: [] };
+    return {
+      calls,
+      checks: {
+        listForRef: async () => ({ data: { check_runs: [] } }),
+        create: async (args: Record<string, unknown>) => {
+          calls.create.push(args);
+          return { data: { id: 1 } };
+        },
+        update: async (args: Record<string, unknown>) => ({
+          data: { id: args.check_run_id as number },
+        }),
+      },
+    };
+  };
+
+  const base = { owner: 'o', repo: 'r', headSha: 'sha' };
+
+  it('says why it could not analyse, verbatim, and never calls it a pass', async () => {
+    const { calls, checks } = api();
+    const verdict = await publishAnalysisFailure({
+      ...base,
+      checks,
+      error: new Error('tarball download failed: 502'),
+      alreadyPublished: false,
+    });
+
+    expect(verdict).toBe('written');
+    const sent = calls.create[0] as {
+      conclusion: string;
+      output: { title: string; summary: string };
+    };
+    expect(sent.conclusion).toBe('neutral');
+    expect(sent.conclusion).not.toBe('success');
+    expect(sent.output.title).toBe('Not analysed');
+    expect(sent.output.summary).toContain('tarball download failed: 502');
+  });
+
+  /*
+   * The reason this is a function and not a bare `publishCheck` call. A failure
+   * *after* the findings were published — a correction that threw, say — would
+   * otherwise replace "6 i18n problems" with "Not analysed" and destroy the one
+   * thing the reviewer had. A later, worse report does not get to win.
+   */
+  it('refuses to overwrite a check that already carries findings', async () => {
+    const { calls, checks } = api();
+    const verdict = await publishAnalysisFailure({
+      ...base,
+      checks,
+      error: new Error('the correction blew up'),
+      alreadyPublished: true,
+    });
+
+    expect(verdict).toBe('skipped');
+    expect(calls.create).toHaveLength(0);
+  });
+
+  // No client means the token could not even be minted. Only the log has it,
+  // and saying so beats pretending the check was written.
+  it('reports that it wrote nothing when there is no client', async () => {
+    const verdict = await publishAnalysisFailure({
+      ...base,
+      checks: null,
+      error: new Error('bad credentials'),
+      alreadyPublished: false,
+    });
+    expect(verdict).toBe('skipped');
+  });
+
+  it('does not throw when GitHub is what broke', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const verdict = await publishAnalysisFailure({
+      ...base,
+      checks: {
+        listForRef: async () => ({ data: { check_runs: [] } }),
+        create: async () => {
+          throw new Error('503 from GitHub');
+        },
+        update: async () => ({ data: { id: 1 } }),
+      },
+      error: new Error('the original failure'),
+      alreadyPublished: false,
+    });
+    expect(verdict).toBe('failed');
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('truncates a very long error rather than blowing the check body', async () => {
+    const { calls, checks } = api();
+    await publishAnalysisFailure({
+      ...base,
+      checks,
+      error: new Error('x'.repeat(5000)),
+      alreadyPublished: false,
+    });
+    const sent = calls.create[0] as { output: { summary: string } };
+    expect(sent.output.summary.length).toBeLessThan(700);
   });
 });
