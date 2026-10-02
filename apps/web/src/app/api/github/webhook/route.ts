@@ -11,6 +11,8 @@ import {
   checkoutReader,
   correctionBody,
 } from '@/lib/i18n/correct-run';
+import { chargeWorkspace } from '@/lib/quota/charge';
+import { resolveInstallationWorkspace } from '@/lib/quota/installation';
 import { loadI18nextCatalogues } from '@localize-infra/core';
 import type { AuditReport } from '@localize-infra/eval';
 import { App } from 'octokit';
@@ -53,6 +55,15 @@ import { App } from 'octokit';
  * correction is attempted, so a correction that times out still leaves the
  * reviewer told what is wrong — the finding is the product's promise, the fix
  * is the convenience.
+ *
+ * ## And the ceiling is no longer the only thing bounding the spend
+ *
+ * It was, and that was a hole: `MAX_CORRECTION_UNITS` bounds one delivery and
+ * bounds nothing across a day, so a repository pushed to repeatedly could
+ * spend without limit on the operator's account. The delivery's installation
+ * now resolves to a workspace and that workspace is charged through the same
+ * `consume_api_quota` the browser and the CLI go through, before any model
+ * call. See `correct()` below.
  */
 
 export const runtime = 'nodejs';
@@ -271,6 +282,14 @@ export async function POST(request: Request): Promise<Response> {
  * caught in one place. A correction that throws must never turn a published
  * check into a 500: the reviewer has already been told what is wrong, and the
  * fix not arriving is a smaller problem than the finding disappearing.
+ *
+ * ## Who pays
+ *
+ * Nothing here spends until the delivery's installation has been resolved to a
+ * workspace and that workspace has been charged. The check above is published
+ * either way — a repository whose workspace cannot be found or cannot afford
+ * the fix is still told what is wrong with it, because the finding is the
+ * promise and the fix is the convenience.
  */
 async function correct(args: {
   octokit: Awaited<ReturnType<App['getInstallationOctokit']>>;
@@ -300,6 +319,23 @@ async function correct(args: {
     };
   }
 
+  /*
+   * Who pays, asked before anything is planned.
+   *
+   * A delivery names an installation and `organization_github_installations`
+   * turns that into a workspace — the row has existed since `20260817000600`
+   * and nothing on this path was reading it. Unresolvable means no correction:
+   * spending on behalf of a workspace that cannot be identified is spending
+   * nobody is accountable for, which is the whole defect this closes.
+   */
+  const workspace = await resolveInstallationWorkspace(
+    args.decision.installationId,
+  );
+  if (!workspace.organizationId) {
+    return { attempted: false, charged: 0, reason: workspace.reason };
+  }
+  const organizationId = workspace.organizationId;
+
   try {
     const outcome = await buildCorrection({
       report: args.report,
@@ -311,10 +347,37 @@ async function correct(args: {
       layout: args.audited.layout,
       readSource: checkoutReader(args.checkoutDir),
       translate: translateBatch({ apiUrl, apiToken }),
+      /*
+       * Both acts of the correction, charged here and nowhere else.
+       *
+       * The pull request goes first although it is opened last. By the time
+       * this runs the plan is non-empty, so a pull request is genuinely
+       * intended, and buying the cheap half first means the expensive half is
+       * never bought for a correction the ceiling will not let us deliver.
+       * Charging it any earlier would spend a unit on every delivery that
+       * plans nothing — the common case, since a `placeholder-mismatch` is
+       * left for a person — and GitHub redelivers on every push.
+       *
+       * Same routes, same units and same counters as the browser: one
+       * workspace has one ceiling however it spends.
+       */
+      charge: async (plannedUnits) => {
+        await chargeWorkspace({ organizationId, route: 'open_pr', units: 1 });
+        await chargeWorkspace({
+          organizationId,
+          route: 'translate',
+          units: plannedUnits,
+        });
+      },
     });
 
     if (outcome.refusal) {
-      return { attempted: true, opened: false, reason: outcome.refusal };
+      return {
+        attempted: true,
+        opened: false,
+        charged: outcome.charged,
+        reason: outcome.refusal,
+      };
     }
 
     const opened = await openCorrectivePr({
@@ -342,6 +405,7 @@ async function correct(args: {
       applied: outcome.applied.length,
       rejected: outcome.rejected.length,
       leftAlone: outcome.leftAlone,
+      charged: outcome.charged,
       ...opened,
     };
   } catch (error) {

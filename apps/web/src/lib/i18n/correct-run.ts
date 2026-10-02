@@ -20,12 +20,15 @@ import { type AuditReport, auditI18n } from '@localize-infra/eval';
  *
  * ## The order is the safety property
  *
- * plan → translate → **re-audit** → write. The re-audit is not a formality:
- * the corrected catalogues go back through the same `auditI18n` that produced
- * the findings, and a translation is written only if that function now says
- * nothing about it. A model that drops `{{name}}` is caught here, before a
- * commit, by the same code that would otherwise have caught it one check
- * later.
+ * plan → **charge** → translate → **re-audit** → write. The re-audit is not a
+ * formality: the corrected catalogues go back through the same `auditI18n` that
+ * produced the findings, and a translation is written only if that function now
+ * says nothing about it. A model that drops `{{name}}` is caught here, before a
+ * commit, by the same code that would otherwise have caught it one check later.
+ *
+ * The charge sits between the plan and the first model call, which is the only
+ * placement that protects anything: the plan is what makes the cost knowable,
+ * and after the call the money is gone and a refusal protects nothing.
  */
 
 export interface CorrectionFile {
@@ -41,6 +44,11 @@ export interface CorrectionOutcome {
   rejected: { unit: CorrectionUnit; reason: string }[];
   /** Findings deliberately not touched — a person still has to look. */
   leftAlone: number;
+  /**
+   * String-language pairs charged to the workspace before any model was
+   * called. Zero when nothing was charged, which is also zero spent.
+   */
+  charged: number;
   /** Set when nothing was attempted; null when work was done. */
   refusal: string | null;
 }
@@ -74,6 +82,17 @@ export async function buildCorrection(args: {
   /** Reads a catalogue file from the checkout. Repository-relative path. */
   readSource: (path: string) => Promise<string | null>;
   translate: TranslateFn;
+  /**
+   * Charge the workspace for the planned pairs, or throw to refuse the whole
+   * correction. Called once, with the plan's exact unit count, before the
+   * first model call.
+   *
+   * A function rather than an organization id, so this file keeps knowing
+   * nothing about quotas, routes or the database — the same reason `translate`
+   * and `readSource` are parameters. Omitting it spends unmetered, which is
+   * what tests want and no production caller does.
+   */
+  charge?: (plannedUnits: number) => Promise<void>;
   maxUnits?: number;
 }): Promise<CorrectionOutcome> {
   const plan = planCorrection({
@@ -89,8 +108,49 @@ export async function buildCorrection(args: {
       applied: [],
       rejected: [],
       leftAlone: plan.leftAlone.length,
+      charged: 0,
       refusal: plan.refusal,
     };
+  }
+
+  /*
+   * Charged once, for every pair the plan contains, before the first model
+   * call — and never per locale.
+   *
+   * `run-actions.ts` charges per locale because its loop writes each locale as
+   * it lands and a resumed run keeps what it bought. This has no resume: a
+   * correction is one pull request or nothing, so a refusal arriving on the
+   * fourth of six locales would discard three locales already paid for. That
+   * is the failure `lib/quota/preflight.ts` exists for, and one atomic
+   * `consume_api_quota` call for the whole plan removes it rather than
+   * predicting it.
+   *
+   * What is charged is what is *sent*, not what survives the re-audit. A
+   * translation the audit then refuses still reached the model and still cost
+   * money, and the counters have to say so — the same rule `/v1/translate`
+   * applies to a CLI token.
+   */
+  let charged = 0;
+  if (args.charge) {
+    try {
+      await args.charge(plan.units.length);
+      charged = plan.units.length;
+    } catch (error) {
+      /*
+       * Any throw refuses the whole correction, including one that is a bug
+       * rather than a quota decision. Fail-closed on purpose: the alternative
+       * is translating on the strength of a check that did not finish, which
+       * is precisely what `chargeWorkspace` refuses to do.
+       */
+      return {
+        files: [],
+        applied: [],
+        rejected: [],
+        leftAlone: plan.leftAlone.length,
+        charged: 0,
+        refusal: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   /*
@@ -128,6 +188,7 @@ export async function buildCorrection(args: {
       applied: [],
       rejected: [],
       leftAlone: plan.leftAlone.length,
+      charged,
       refusal: 'No confident translation came back.',
     };
   }
@@ -152,6 +213,7 @@ export async function buildCorrection(args: {
       applied: [],
       rejected,
       leftAlone: plan.leftAlone.length,
+      charged,
       refusal: 'Every translation was refused by the audit.',
     };
   }
@@ -201,6 +263,7 @@ export async function buildCorrection(args: {
     applied,
     rejected,
     leftAlone: plan.leftAlone.length,
+    charged,
     refusal: files.length === 0 ? 'Nothing could be written.' : null,
   };
 }

@@ -301,6 +301,177 @@ describe('buildCorrection', () => {
   });
 });
 
+/**
+ * What the correction costs, and who is asked before it is spent.
+ *
+ * The webhook used to reach a paid model with no workspace and no counter —
+ * `MAX_CORRECTION_UNITS` bounded one delivery and bounded nothing across a
+ * day. These assert the two things that close that: the charge happens, and it
+ * happens *first*.
+ */
+describe('buildCorrection, charged before the model', () => {
+  const twoLocales = {
+    report: report([missing('app.new', 'fr'), missing('app.new', 'de')]),
+    catalogues: {
+      en: { 'app.new': 'Save changes' },
+      fr: {},
+      de: {},
+    },
+    sourceLocale: 'en',
+    usedKeys: ['app.new'],
+    dynamicCallSites: 0,
+    cataloguesDir: 'locales',
+    layout: 'directory-per-locale' as const,
+    readSource: async () => `{\n  "app": {}\n}\n`,
+  };
+
+  const echo = async (args: {
+    targetLocale: string;
+    strings: { key: string; text: string }[];
+  }) =>
+    args.strings.map((s) => ({
+      key: s.key,
+      text: `[${args.targetLocale}] ${s.text}`,
+      confidence: 'confident',
+    }));
+
+  it('charges every planned pair once, and before the first translation', async () => {
+    const order: string[] = [];
+    const charged: number[] = [];
+
+    const outcome = await buildCorrection({
+      ...twoLocales,
+      charge: async (units) => {
+        order.push('charge');
+        charged.push(units);
+      },
+      translate: async (args) => {
+        order.push(`translate:${args.targetLocale}`);
+        return echo(args);
+      },
+    });
+
+    /*
+     * One key into two locales is two string-language pairs — the unit
+     * `consume_api_quota` counts and the unit the API charges a CLI token for.
+     * Charging per *key* would under-count by the number of languages, which
+     * is the whole shape of this product.
+     */
+    expect(charged).toEqual([2]);
+    // One call for the plan, not one per locale: a correction is one pull
+    // request or nothing, so a refusal arriving mid-loop would discard
+    // locales already paid for.
+    expect(order[0]).toBe('charge');
+    expect(order.filter((o) => o === 'charge')).toHaveLength(1);
+    expect(order.slice(1).sort()).toEqual(['translate:de', 'translate:fr']);
+    expect(outcome.charged).toBe(2);
+    expect(outcome.files).toHaveLength(2);
+  });
+
+  it('spends nothing on the model when the charge refuses', async () => {
+    let translated = 0;
+
+    const outcome = await buildCorrection({
+      ...twoLocales,
+      charge: async () => {
+        throw new Error('This workspace has reached today’s ceiling.');
+      },
+      translate: async (args) => {
+        translated += 1;
+        return echo(args);
+      },
+    });
+
+    expect(translated).toBe(0);
+    expect(outcome.files).toEqual([]);
+    expect(outcome.applied).toEqual([]);
+    expect(outcome.charged).toBe(0);
+    expect(outcome.refusal).toBe('This workspace has reached today’s ceiling.');
+  });
+
+  /*
+   * Fail-closed on a fault, not just on a decision. A charge that throws for
+   * any reason stops the correction, because translating on the strength of a
+   * check that did not finish is exactly what `chargeWorkspace` refuses to do.
+   */
+  it('refuses when the charge fails for a reason that is not a quota decision', async () => {
+    let translated = 0;
+    const outcome = await buildCorrection({
+      ...twoLocales,
+      charge: async () => {
+        throw new Error('fetch failed');
+      },
+      translate: async (args) => {
+        translated += 1;
+        return echo(args);
+      },
+    });
+    expect(translated).toBe(0);
+    expect(outcome.refusal).toBe('fetch failed');
+  });
+
+  /*
+   * The plan refuses before the charge does, so a delivery that corrects
+   * nothing costs nothing — and that is the common case, since a
+   * `placeholder-mismatch` is always left for a person and GitHub redelivers
+   * on every push.
+   */
+  it('does not charge when there is nothing it may correct', async () => {
+    let charges = 0;
+    const outcome = await buildCorrection({
+      ...twoLocales,
+      report: report([
+        {
+          kind: 'placeholder-mismatch',
+          key: 'app.new',
+          locale: 'fr',
+          detail: 'drops {{name}}',
+        },
+      ]),
+      charge: async () => {
+        charges += 1;
+      },
+      translate: echo,
+    });
+    expect(charges).toBe(0);
+    expect(outcome.charged).toBe(0);
+    expect(outcome.refusal).toMatch(/safe to correct automatically/i);
+  });
+
+  /*
+   * What is charged is what was *sent*, not what survived. A translation the
+   * re-audit then refuses still reached the model and still cost money; a
+   * counter that forgot it would promise budget the API will not honour.
+   */
+  it('still reports the charge when the audit refuses the result', async () => {
+    const outcome = await buildCorrection({
+      ...twoLocales,
+      report: report([missing('auth.greeting', 'fr')]),
+      catalogues: { en: { 'auth.greeting': 'Hello {{name}}' }, fr: {} },
+      usedKeys: ['auth.greeting'],
+      charge: async () => {},
+      translate: async () => [
+        { key: 'auth.greeting', text: 'Bonjour', confidence: 'confident' },
+      ],
+    });
+
+    expect(outcome.files).toEqual([]);
+    expect(outcome.refusal).toMatch(/refused by the audit/i);
+    expect(outcome.charged).toBe(1);
+  });
+
+  // Omitting the hook spends unmetered. Only tests do that, and this pins it
+  // so a production caller that forgets is a visible difference, not a default.
+  it('reports nothing charged when no charge was supplied', async () => {
+    const outcome = await buildCorrection({
+      ...twoLocales,
+      translate: echo,
+    });
+    expect(outcome.charged).toBe(0);
+    expect(outcome.files).toHaveLength(2);
+  });
+});
+
 describe('correctionBody', () => {
   it('names what it added and what it left for a person', () => {
     const body = correctionBody({
@@ -314,6 +485,7 @@ describe('correctionBody', () => {
         ],
         rejected: [],
         leftAlone: 2,
+        charged: 2,
         refusal: null,
       },
     });
