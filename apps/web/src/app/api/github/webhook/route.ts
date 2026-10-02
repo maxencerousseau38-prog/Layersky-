@@ -4,6 +4,13 @@ import { materialiseRepository } from '@/lib/github/materialise';
 import { decideWebhook, verifySignature } from '@/lib/github/webhook';
 import { analysePullRequest, discardCheckout } from '@/lib/i18n/analyse';
 import { readBaseCatalogues } from '@/lib/i18n/base-catalogue';
+import { correctableDirectory } from '@/lib/i18n/correct';
+import { openCorrectivePr, translateBatch } from '@/lib/i18n/correct-github';
+import {
+  buildCorrection,
+  checkoutReader,
+  correctionBody,
+} from '@/lib/i18n/correct-run';
 import { loadI18nextCatalogues } from '@localize-infra/core';
 import type { AuditReport } from '@localize-infra/eval';
 import { App } from 'octokit';
@@ -33,11 +40,19 @@ import { App } from 'octokit';
  *
  * ## The timeout is still the ceiling, and this is sized to stay under it
  *
- * The analysis is pure computation over the files a pull request touched. No
- * model is called, so there is no cost guard here and nothing to charge: the
- * expensive part of this product is not on this path. That is why the slice
- * needs no queue — and if a correction step is ever added, it will, because
- * then the run is back to being a sum of model calls.
+ * The analysis is pure computation over the files a pull request touched, and
+ * that half still calls no model.
+ *
+ * **The correction below does**, which this paragraph used to say would need a
+ * queue. It does not have one, and the reason is a ceiling instead:
+ * `planCorrection` refuses past `MAX_CORRECTION_UNITS`, so the work a single
+ * delivery can take on is bounded before any of it starts. A bulk import is
+ * refused with a sentence rather than begun and lost to a timeout.
+ *
+ * The ordering carries the rest. The check is published *before* the
+ * correction is attempted, so a correction that times out still leaves the
+ * reviewer told what is wrong — the finding is the product's promise, the fix
+ * is the convenience.
  */
 
 export const runtime = 'nodejs';
@@ -203,12 +218,32 @@ export async function POST(request: Request): Promise<Response> {
       skipped: analysis.skipped,
     });
 
+    /*
+     * The correction, after the check and never instead of it.
+     *
+     * Ordering matters: the check is the product's promise and costs nothing,
+     * so it is published before anything that can fail or time out. A
+     * correction that dies half-way leaves a pull request that has still been
+     * told what is wrong with it.
+     */
+    let correction: Record<string, unknown> = { attempted: false };
+    if (analysis.audited && report.findings.length > 0) {
+      correction = await correct({
+        octokit,
+        decision,
+        report,
+        audited: analysis.audited,
+        checkoutDir: materialised.dir,
+      });
+    }
+
     return ok('analysed', {
       check: CHECK_NAME,
       checkRunId,
       findings: report.findings.length,
       skipped: analysis.skipped,
       catalogueFilesCompared: base.touched.length,
+      correction,
     });
   } catch (error) {
     /*
@@ -225,5 +260,96 @@ export async function POST(request: Request): Promise<Response> {
     });
   } finally {
     await discardCheckout(checkout);
+  }
+}
+
+/**
+ * Translate what is missing and open a pull request with it.
+ *
+ * Split out of the handler so the handler stays readable as a sequence —
+ * verify, decide, analyse, check, correct — and so every failure in here is
+ * caught in one place. A correction that throws must never turn a published
+ * check into a 500: the reviewer has already been told what is wrong, and the
+ * fix not arriving is a smaller problem than the finding disappearing.
+ */
+async function correct(args: {
+  octokit: Awaited<ReturnType<App['getInstallationOctokit']>>;
+  decision: Extract<ReturnType<typeof decideWebhook>, { act: true }>;
+  report: AuditReport;
+  audited: NonNullable<
+    Awaited<ReturnType<typeof analysePullRequest>>['audited']
+  >;
+  checkoutDir: string;
+}): Promise<Record<string, unknown>> {
+  const apiUrl = process.env.LOCALIZE_API_URL;
+  const apiToken = process.env.LOCALIZE_API_TOKEN;
+  if (!apiUrl || !apiToken) {
+    return { attempted: false, reason: 'translation API not configured' };
+  }
+
+  if (!correctableDirectory(args.audited.cataloguesDir)) {
+    /*
+     * Analysed but not correctable, and said rather than attempted.
+     * `/v1/open-pr` only accepts paths under `locales/`, while the loader also
+     * finds catalogues in `public/locales` and `src/locales`. Discovering that
+     * as a 400 would mean the translations had already been paid for.
+     */
+    return {
+      attempted: false,
+      reason: `catalogues live in \`${args.audited.cataloguesDir}\`; corrections can only be written under \`locales/\``,
+    };
+  }
+
+  try {
+    const outcome = await buildCorrection({
+      report: args.report,
+      catalogues: args.audited.catalogues,
+      sourceLocale: SOURCE_LOCALE,
+      usedKeys: args.audited.usedKeys,
+      dynamicCallSites: args.audited.dynamicCallSites,
+      cataloguesDir: args.audited.cataloguesDir,
+      layout: args.audited.layout,
+      readSource: checkoutReader(args.checkoutDir),
+      translate: translateBatch({ apiUrl, apiToken }),
+    });
+
+    if (outcome.refusal) {
+      return { attempted: true, opened: false, reason: outcome.refusal };
+    }
+
+    const opened = await openCorrectivePr({
+      apiUrl,
+      apiToken,
+      owner: args.decision.owner,
+      repo: args.decision.repo,
+      // Onto the pull request's own head branch, not its base. Merging the
+      // correction updates that branch, which fires `synchronize` on the
+      // original pull request and re-runs the check that asked for it. The
+      // cycle closes itself rather than needing a second trigger.
+      baseBranch: args.decision.headRef,
+      installationId: args.decision.installationId,
+      title: `i18n: add ${outcome.applied.length} missing translation${outcome.applied.length === 1 ? '' : 's'}`,
+      body: correctionBody({
+        outcome,
+        sourceLocale: SOURCE_LOCALE,
+        pullNumber: args.decision.pullNumber,
+      }),
+      files: outcome.files,
+    });
+
+    return {
+      attempted: true,
+      applied: outcome.applied.length,
+      rejected: outcome.rejected.length,
+      leftAlone: outcome.leftAlone,
+      ...opened,
+    };
+  } catch (error) {
+    console.error('i18n correction failed:', error);
+    return {
+      attempted: true,
+      opened: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
   }
 }
