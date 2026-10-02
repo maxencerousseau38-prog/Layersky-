@@ -375,7 +375,13 @@ async function correct(args: {
       return {
         attempted: true,
         opened: false,
+        requested: outcome.requested,
         charged: outcome.charged,
+        refusals: outcome.rejected.map((entry) => ({
+          locale: entry.unit.locale,
+          key: entry.unit.key,
+          reason: entry.reason,
+        })),
         reason: outcome.refusal,
       };
     }
@@ -391,7 +397,16 @@ async function correct(args: {
       // cycle closes itself rather than needing a second trigger.
       baseBranch: args.decision.headRef,
       installationId: args.decision.installationId,
-      title: `i18n: add ${outcome.applied.length} missing translation${outcome.applied.length === 1 ? '' : 's'}`,
+      /*
+       * The title says "5 of 6" when it is 5 of 6. The first production cycle
+       * titled a partial correction "add 5 missing translations" while six had
+       * been asked for, so the one number a reviewer sees without opening
+       * anything was the one that hid the gap.
+       */
+      title:
+        outcome.rejected.length > 0
+          ? `i18n: add ${outcome.applied.length} of ${outcome.requested} missing translations`
+          : `i18n: add ${outcome.applied.length} missing translation${outcome.applied.length === 1 ? '' : 's'}`,
       body: correctionBody({
         outcome,
         sourceLocale: SOURCE_LOCALE,
@@ -402,8 +417,21 @@ async function correct(args: {
 
     return {
       attempted: true,
+      requested: outcome.requested,
       applied: outcome.applied.length,
       rejected: outcome.rejected.length,
+      /*
+       * The reasons, not just the count. This reply is what GitHub's delivery
+       * log keeps, and it is the only record of a correction that a repository
+       * owner can read after the fact — a bare count sent somebody to the
+       * Vercel logs to find out which language was dropped, and the logs did
+       * not know either.
+       */
+      refusals: outcome.rejected.map((entry) => ({
+        locale: entry.unit.locale,
+        key: entry.unit.key,
+        reason: entry.reason,
+      })),
       leftAlone: outcome.leftAlone,
       charged: outcome.charged,
       ...opened,
