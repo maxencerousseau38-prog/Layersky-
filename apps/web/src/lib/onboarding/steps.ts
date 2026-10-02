@@ -1,5 +1,18 @@
 /**
- * How far a workspace is from its first pull request, as a sequence of steps.
+ * How far a workspace is from its first health check, as a sequence of steps.
+ *
+ * ## This used to lead somewhere else, and that was the defect
+ *
+ * It had six steps ending at "open the first pull request" with the CLI, which
+ * described the legacy `extract → translate → PR` pipeline. That pipeline still
+ * works and is still reachable, but it is not what Layersky is: the product is
+ * a guardrail that watches pull requests and reports what they break.
+ *
+ * The guardrail needs **none** of the four steps that followed GitHub. It reads
+ * no project row, needs no CLI token, starts no run. It reacts to the App
+ * installation, so the honest path is three steps — workspace, GitHub, and the
+ * first check arriving on its own. Everything else is now presented as what it
+ * is: another way in, not the way.
  *
  * This is deliberately *not* `lib/metrics/funnel.ts`, and the difference is the
  * whole point of the file. The funnel answers "how many" — it is a measurement
@@ -73,15 +86,18 @@ export interface OnboardingInput {
   /** Tokens that are neither expired nor revoked. */
   activeTokens: number;
   runs: readonly OnboardingRun[];
+  /**
+   * Health checks this workspace has received, from `i18n_checks`.
+   *
+   * A count, not the rows: this file decides "what now", and the answer turns
+   * on whether any check has ever arrived. What those checks *found* is the
+   * health screen's question, and reading it here would put a second opinion
+   * about the same rows on a second surface.
+   */
+  healthChecks: number;
 }
 
-export type StepId =
-  | 'workspace'
-  | 'github'
-  | 'repository'
-  | 'token'
-  | 'run'
-  | 'pull_request';
+export type StepId = 'workspace' | 'github' | 'health_check';
 
 export type StepStatus = 'done' | 'current' | 'todo' | 'blocked';
 
@@ -109,7 +125,7 @@ export interface Onboarding {
   total: number;
   /** The step the reader should act on, or null once everything is done. */
   current: StepId | null;
-  /** True once a run has opened a pull request: the whole point of the path. */
+  /** True once a health check has arrived: the whole point of the path. */
   activated: boolean;
   /**
    * The project a shell command should be built for, or null.
@@ -125,10 +141,7 @@ export interface Onboarding {
 const TITLES: Record<StepId, string> = {
   workspace: 'Create a workspace',
   github: 'Connect GitHub',
-  repository: 'Connect a repository',
-  token: 'Create a CLI token',
-  run: 'Run the CLI',
-  pull_request: 'Open the first pull request',
+  health_check: 'Get your first health check',
 };
 
 /** A project that could actually produce a pull request. */
@@ -143,13 +156,6 @@ function usable(project: OnboardingProject): boolean {
 export function buildOnboarding(input: OnboardingInput): Onboarding {
   const connected = input.githubAccountLogin !== null;
   const deploymentCannotConnect = input.githubBlockers.length > 0;
-
-  const withRepository = input.projects.filter(
-    (project) => project.repositoryOwner && project.repositoryName,
-  );
-  const runsWithPr = input.runs.filter((run) => run.pr_url !== null);
-  const failedRuns = input.runs.filter((run) => run.status === 'failed');
-  const awaiting = input.runs.filter((run) => run.status === 'awaiting_review');
 
   /*
    * Built as (done, tone, detail, problem) per step, then sequenced. Splitting
@@ -184,74 +190,22 @@ export function buildOnboarding(input: OnboardingInput): Onboarding {
           : null,
     },
     {
-      id: 'repository',
-      done: withRepository.length > 0,
-      tone: withRepository.length > 0 ? 'confident' : null,
+      id: 'health_check',
+      done: input.healthChecks > 0,
+      /*
+       * Confident once one has arrived, and nothing before that.
+       *
+       * Not amber while waiting: a workspace that has connected GitHub and not
+       * yet opened a pull request is not degraded, it simply has not been
+       * asked anything. DESIGN.md §6.3 — a thing that has not happened has no
+       * state.
+       */
+      tone: input.healthChecks > 0 ? 'confident' : null,
       detail:
-        withRepository.length > 0
-          ? withRepository
-              .map((p) => `${p.repositoryOwner}/${p.repositoryName}`)
-              .join(', ')
+        input.healthChecks > 0
+          ? `${input.healthChecks} check${input.healthChecks === 1 ? '' : 's'}`
           : null,
       problem: null,
-    },
-    {
-      id: 'token',
-      done: input.activeTokens > 0,
-      tone: input.activeTokens > 0 ? 'confident' : null,
-      detail:
-        input.activeTokens > 0
-          ? `${input.activeTokens} active token${input.activeTokens === 1 ? '' : 's'}`
-          : null,
-      problem: null,
-    },
-    {
-      id: 'run',
-      done: input.runs.length > 0,
-      /*
-       * A run that failed is a thing that exists and failed, so it is reported
-       * — even though the step counts as done. "Done" here means the CLI
-       * reached the API and a row was written, which is genuinely progress:
-       * the reader has got past token, network and repository. What went wrong
-       * after that belongs on the step, not hidden by it.
-       */
-      tone:
-        input.runs.length === 0
-          ? null
-          : failedRuns.length === input.runs.length
-            ? 'failed'
-            : 'confident',
-      detail:
-        input.runs.length > 0
-          ? `${input.runs.length} run${input.runs.length === 1 ? '' : 's'}`
-          : null,
-      problem:
-        input.runs.length > 0 && failedRuns.length === input.runs.length
-          ? `Every run so far failed (${failedRuns.length}). Open the run to read what the API returned — the reason is recorded verbatim.`
-          : null,
-    },
-    {
-      id: 'pull_request',
-      done: runsWithPr.length > 0,
-      /*
-       * Iris, and only here. A run that stopped to ask a question is the one
-       * place in this path where the product is waiting on a human decision —
-       * which is the single meaning §1.4 reserves the colour for.
-       */
-      tone:
-        runsWithPr.length > 0
-          ? 'confident'
-          : awaiting.length > 0
-            ? 'ambiguous'
-            : null,
-      detail:
-        runsWithPr.length > 0
-          ? `${runsWithPr.length} pull request${runsWithPr.length === 1 ? '' : 's'}`
-          : null,
-      problem:
-        runsWithPr.length === 0 && awaiting.length > 0
-          ? `${awaiting.length} run${awaiting.length === 1 ? '' : 's'} stopped to ask a question. Answer it and the pull request follows — this is the product working, not a failure.`
-          : null,
     },
   ];
 
@@ -276,7 +230,15 @@ export function buildOnboarding(input: OnboardingInput): Onboarding {
     done: raw.filter((step) => step.done).length,
     total: raw.length,
     current: firstUndone?.id ?? null,
-    activated: runsWithPr.length > 0,
+    /*
+     * Activation is the first check, not the first pull request.
+     *
+     * It was `runsWithPr.length > 0`, which is the legacy pipeline's finish
+     * line. A workspace can now be fully working — GitHub connected, every
+     * pull request checked — without ever starting a run, and under the old
+     * definition it would have been told it had not arrived.
+     */
+    activated: input.healthChecks > 0,
     commandProject: input.projects.find(usable) ?? null,
   };
 }

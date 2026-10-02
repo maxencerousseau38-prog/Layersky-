@@ -4,6 +4,7 @@ import {
   FileText,
   FolderGit2,
   Gauge,
+  HeartPulse,
   History,
   Inbox,
   KeyRound,
@@ -256,6 +257,24 @@ export const CLOSER_NAV: NavRoute[] = [
  */
 export function workspaceNav(orgSlug: string): NavRoute[] {
   return [
+    /*
+     * First, because it is the product.
+     *
+     * The guardrail — pull request in, check out, corrective pull request when
+     * the fix is safe — has run since #124 and had no surface at all until
+     * now: every screen in this navigation described the legacy extraction
+     * pipeline. Ranking by frequency of use (DESIGN.md §9), a continuous check
+     * that fires on every pull request outranks a setup flow somebody walks
+     * once.
+     */
+    {
+      href: `/${orgSlug}/health`,
+      label: 'Health',
+      icon: HeartPulse,
+      built: true,
+      keywords:
+        'check i18n problems missing translations placeholder findings guardrail pull request',
+    },
     {
       href: `/${orgSlug}/projects`,
       label: 'Projects',

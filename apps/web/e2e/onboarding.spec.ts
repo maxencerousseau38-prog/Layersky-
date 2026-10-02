@@ -199,14 +199,23 @@ test.describe('a brand-new user with nothing configured', () => {
   });
 
   test('opens on exactly one actionable step, with the rest waiting', async () => {
-    await expect(page.getByTestId('onboarding-step')).toHaveCount(6);
+    /*
+     * Three, not six.
+     *
+     * The four steps after GitHub described the legacy CLI pipeline —
+     * repository, token, run, pull request — and the guardrail that is now the
+     * product needs none of them. A new workspace connects GitHub and waits
+     * for its first check; presenting four more as the path told every reader
+     * the product was a command-line tool they had to drive.
+     */
+    await expect(page.getByTestId('onboarding-step')).toHaveCount(3);
 
     // Done: the workspace, and only the workspace.
     await expect(page.locator('[data-status="done"]')).toHaveCount(1);
     await expect(
       page.locator('[data-step="workspace"][data-status="done"]'),
     ).toBeVisible();
-    await expect(page.getByText('1 of 6')).toBeVisible();
+    await expect(page.getByText('1 of 3')).toBeVisible();
 
     /*
      * GitHub is where the reader is. Whether it reads `current` or `blocked`
@@ -221,12 +230,25 @@ test.describe('a brand-new user with nothing configured', () => {
       /^(current|blocked)$/,
     );
 
-    for (const id of ['repository', 'token', 'run', 'pull_request']) {
-      await expect(
-        page.locator(`[data-step="${id}"]`),
-        `step ${id}`,
-      ).toHaveAttribute('data-status', 'todo');
-    }
+    await expect(
+      page.locator('[data-step="health_check"]'),
+      'the first check',
+    ).toHaveAttribute('data-status', 'todo');
+  });
+
+  /*
+   * The step that is now the point of the page, and the one surface that tells
+   * a reader the product runs without them.
+   */
+  test('names the health check as the destination, not a CLI run', async () => {
+    const step = page.locator('[data-step="health_check"]');
+    await expect(step).toContainText(/health check/i);
+
+    // The legacy path is still reachable, and is named as the alternative it
+    // is rather than as the path.
+    await expect(
+      page.getByRole('region', { name: /Translating in bulk/i }),
+    ).toBeVisible();
   });
 
   test('says what is wrong rather than offering a control that cannot work', async () => {

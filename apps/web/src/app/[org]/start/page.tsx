@@ -107,60 +107,26 @@ export default async function StartPage({
         </Link>
       </>
     ),
-    repository: (
+    health_check: (
       <>
         <p className="max-w-[64ch] text-small leading-6 text-secondary">
-          A project points at one repository and the languages it ships. Pick
-          the repository from the ones your installation reaches — it is a list,
-          not a text field, so a name you cannot reach cannot be entered.
+          There is nothing to schedule and nothing to configure. Open a pull
+          request on any repository your installation can read: Layersky reads
+          what it changed, compares the catalogues against the base commit, and
+          posts a check on the commit.
+        </p>
+        <p className="mt-2 max-w-[64ch] text-small leading-6 text-secondary">
+          When the fix is safe — a key the source defines and a language is
+          missing — it opens a corrective pull request. When it is a judgement,
+          it says so and leaves it to you.
         </p>
         <Link
-          href={`/${org}/projects`}
+          href={`/${org}/health`}
           className="mt-3 inline-block text-link underline underline-offset-2 hover:text-link-hover"
         >
-          Create a project
+          Watch for it on Health
         </Link>
       </>
-    ),
-    token: (
-      <>
-        <p className="max-w-[64ch] text-small leading-6 text-secondary">
-          The command-line tool authenticates with a token that belongs to you
-          and acts only for this workspace. It is shown once.
-        </p>
-        <CreateToken orgSlug={org} target={target} />
-      </>
-    ),
-    run: (
-      <>
-        <p className="max-w-[64ch] text-small leading-6 text-secondary">
-          Run this in the root of your application — the directory with{' '}
-          <span className="font-mono">package.json</span> — with{' '}
-          <span className="font-mono">LOCALIZE_API_TOKEN</span> set to the token
-          you copied.
-        </p>
-        <div className="mt-3">
-          {runLine ? (
-            <CopyCommand command={runLine} />
-          ) : (
-            <p className="text-small text-secondary">
-              Connect a repository first — without one the CLI can translate but
-              cannot open a pull request, which is the step after this.
-            </p>
-          )}
-        </div>
-        <p className="mt-2 max-w-[64ch] text-caption leading-5 text-tertiary">
-          It checks the token, the repository and the branch <em>before</em>{' '}
-          translating anything, so a mistake in any of them costs nothing.
-        </p>
-      </>
-    ),
-    pull_request: (
-      <p className="max-w-[64ch] text-small leading-6 text-secondary">
-        The run above opens it. When a string has more than one defensible
-        reading the run stops and asks instead — that is the product working,
-        and the question is waiting for you under Ambiguity.
-      </p>
     ),
   };
 
@@ -168,7 +134,7 @@ export default async function StartPage({
     <Page>
       <PageHeader
         title="Get started"
-        purpose="From an empty workspace to your first pull request."
+        purpose="From an empty workspace to Layersky watching your pull requests."
         meta={
           <>
             <PageMeta label="Workspace">{organization.name}</PageMeta>
@@ -184,8 +150,8 @@ export default async function StartPage({
           tone="confident"
           className="mt-6 max-w-[64ch] px-4 py-3 leading-6"
         >
-          This workspace has opened a pull request. The path below is done —
-          everything after this is the same command, run again.
+          Layersky is watching this workspace. Every pull request from here on
+          gets a check without anybody starting one.
         </Alert>
       ) : null}
 
@@ -262,6 +228,54 @@ export default async function StartPage({
           );
         })}
       </ol>
+
+      {/*
+       * The legacy pipeline, kept and demoted.
+       *
+       * `extract → translate → open a pull request` still works and some
+       * teams want it — a one-off bulk translation is a real job the
+       * guardrail does not do. What it is not is the way in, and presenting
+       * it as four of six steps told every new workspace that the product
+       * was a CLI they had to run. The guardrail needs none of it.
+       */}
+      <section aria-labelledby="cli" className="mt-10">
+        <h2 id="cli" className="text-subtitle font-semibold text-primary">
+          Translating in bulk, from the command line
+        </h2>
+        <p className="mt-2 max-w-[64ch] text-small leading-6 text-secondary">
+          Separate from the check above, and optional. The check watches what
+          you change; this translates everything at once. It needs a project
+          pointing at a repository, a token, and a terminal.
+        </p>
+        <div className="mt-4 border-t border-subtle pt-4">
+          {runLine ? (
+            <>
+              <CopyCommand command={runLine} />
+              <p className="mt-2 max-w-[64ch] text-caption leading-5 text-tertiary">
+                It checks the token, the repository and the branch{' '}
+                <em>before</em> translating anything, so a mistake in any of
+                them costs nothing.
+              </p>
+            </>
+          ) : (
+            <p className="max-w-[64ch] text-small leading-6 text-secondary">
+              No project here points at a repository with target languages yet,
+              so there is no command to copy. The health check does not need
+              one.{' '}
+              <Link
+                href={`/${org}/projects`}
+                className="text-link underline underline-offset-2 hover:text-link-hover"
+              >
+                Create a project
+              </Link>{' '}
+              if you want this path too.
+            </p>
+          )}
+        </div>
+        <div className="mt-4">
+          <CreateToken orgSlug={org} target={target} />
+        </div>
+      </section>
 
       <section aria-labelledby="stuck" className="mt-10">
         <h2 id="stuck" className="text-subtitle font-semibold text-primary">

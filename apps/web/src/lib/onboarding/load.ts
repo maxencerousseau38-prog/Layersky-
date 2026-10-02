@@ -27,7 +27,7 @@ export async function loadOnboarding(
 ): Promise<Onboarding> {
   const supabase = await createClient();
 
-  const [installation, projects, runs, tokens] = await Promise.all([
+  const [installation, projects, runs, tokens, checks] = await Promise.all([
     supabase
       .from('organization_github_installations')
       .select('account_login')
@@ -47,6 +47,15 @@ export async function loadOnboarding(
       .order('created_at', { ascending: true })
       .limit(500),
     listCliTokens(organizationId),
+    /*
+     * A count, by `head: true`, because the page needs "has one ever arrived"
+     * and nothing else. Fetching the rows to call `.length` on them would read
+     * a workspace's whole check history to answer a yes-or-no question.
+     */
+    supabase
+      .from('i18n_checks')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', organizationId),
   ]);
 
   return buildOnboarding({
@@ -54,6 +63,7 @@ export async function loadOnboarding(
     workspaceName,
     githubAccountLogin: installation.data?.account_login ?? null,
     githubBlockers: installBlockers(),
+    healthChecks: checks.count ?? 0,
     projects: (projects.data ?? []).map((row) => ({
       slug: row.slug,
       name: row.name,
