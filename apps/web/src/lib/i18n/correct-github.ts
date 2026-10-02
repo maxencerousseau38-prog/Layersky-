@@ -24,7 +24,22 @@ import type { CorrectionFile } from '@/lib/i18n/correct-run';
  * lockfile has to be regenerated under Linux, a five-day CI outage ago.
  */
 
-/** Calls `/v1/translate` the way `run-actions.ts` already does. */
+/**
+ * Calls `/v1/translate` the way `run-actions.ts` already does.
+ *
+ * ## It returns everything the route said, and that is a fix
+ *
+ * This used to return `translations` alone and drop `missingKeys` and
+ * `failures` on the floor. The first production cycle paid that bill: six
+ * languages were charged, five were delivered, and German disappeared from the
+ * corrective pull request with nothing anywhere saying why — not in the body,
+ * not in the webhook's reply, not in a log. The response had carried the
+ * answer and two layers had thrown it away.
+ *
+ * `question` comes back too. A model that says "I am not sure, and here is why"
+ * is doing exactly what invariant 4 asks of it; forwarding the sentence is what
+ * turns that into something a reviewer can act on instead of an absence.
+ */
 export function translateBatch(config: { apiUrl: string; apiToken: string }) {
   return async (args: {
     targetLocale: string;
@@ -64,13 +79,37 @@ export function translateBatch(config: { apiUrl: string; apiToken: string }) {
     }
 
     const body = (await response.json()) as {
-      translations?: { key: string; text: string; confidence?: string }[];
+      translations?: {
+        key: string;
+        text: string;
+        confidence?: string;
+        question?: string | null;
+      }[];
+      missingKeys?: string[];
+      failures?: { keys?: string[]; attempts?: number; error?: string }[];
     };
-    return (body.translations ?? []).map((t) => ({
-      key: t.key,
-      text: t.text,
-      confidence: t.confidence ?? 'confident',
-    }));
+
+    return {
+      translations: (body.translations ?? []).map((t) => ({
+        key: t.key,
+        text: t.text,
+        confidence: t.confidence ?? 'confident',
+        question: t.question ?? null,
+      })),
+      /*
+       * `missingKeys` is the route saying "I answered, and this key is not in
+       * the answer". Distinct from a key absent for no stated reason, which the
+       * caller reports as a defect in this tool rather than a decision.
+       */
+      missingKeys: body.missingKeys ?? [],
+      failures: (body.failures ?? []).map((f) => ({
+        keys: f.keys ?? [],
+        attempts: f.attempts ?? 1,
+        // Verbatim, truncated (DESIGN.md §8). The API strips provider errors
+        // before returning, so what arrives here is safe to repeat.
+        error: (f.error ?? 'no error given').slice(0, 300),
+      })),
+    };
   };
 }
 

@@ -150,11 +150,16 @@ describe('the correction cycle, on the fixture shape', () => {
       },
       translate: async ({ targetLocale, strings }) => {
         spend.push(`translate:${targetLocale}`);
-        return strings.map((s) => ({
-          key: s.key,
-          text: `[${targetLocale}] ${s.text}`,
-          confidence: 'confident',
-        }));
+        return {
+          translations: strings.map((s) => ({
+            key: s.key,
+            text: `[${targetLocale}] ${s.text}`,
+            confidence: 'confident',
+            question: null,
+          })),
+          missingKeys: [],
+          failures: [],
+        };
       },
     });
 
@@ -259,12 +264,16 @@ describe('the correction cycle, on the fixture shape', () => {
       cataloguesDir: 'locales',
       layout: 'directory-per-locale',
       readSource: checkoutReader(root),
-      translate: async ({ strings }) =>
-        strings.map((s) => ({
+      translate: async ({ strings }) => ({
+        translations: strings.map((s) => ({
           key: s.key,
           text: 'Se déconnecter',
           confidence: 'confident',
+          question: null,
         })),
+        missingKeys: [],
+        failures: [],
+      }),
     });
 
     expect(outcome.files.map((f) => f.path)).toEqual([
@@ -328,11 +337,16 @@ describe('the correction cycle, on the fixture shape', () => {
       },
       translate: async ({ strings }) => {
         translated += 1;
-        return strings.map((s) => ({
-          key: s.key,
-          text: 'should never be produced',
-          confidence: 'confident',
-        }));
+        return {
+          translations: strings.map((s) => ({
+            key: s.key,
+            text: 'should never be produced',
+            confidence: 'confident',
+            question: null,
+          })),
+          missingKeys: [],
+          failures: [],
+        };
       },
     });
 

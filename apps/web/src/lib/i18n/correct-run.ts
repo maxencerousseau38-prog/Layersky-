@@ -29,6 +29,20 @@ import { type AuditReport, auditI18n } from '@localize-infra/eval';
  * The charge sits between the plan and the first model call, which is the only
  * placement that protects anything: the plan is what makes the cost knowable,
  * and after the call the money is gone and a refusal protects nothing.
+ *
+ * ## Nothing may vanish, and that is enforced rather than remembered
+ *
+ * Every unit the plan asked for ends up in `applied` or in `rejected`:
+ * `requested === applied.length + rejected.length`, always. The first
+ * production cycle is why. Six languages were charged, five were written, and
+ * German left no trace — not in the pull request body, not in the webhook's
+ * reply, not in a log. The cause was two bare `continue`s and a dropped
+ * response field, and the symptom was a pull request that looked complete.
+ *
+ * The reconciliation at the end is deliberately a backstop, not the mechanism.
+ * Each path explains its own refusals; the backstop catches the one nobody
+ * thought of and labels it a defect in this tool, so the next hole reports
+ * itself instead of waiting for someone to notice a missing language.
  */
 
 export interface CorrectionFile {
@@ -36,12 +50,23 @@ export interface CorrectionFile {
   content: string;
 }
 
+/** One unit that was asked for and not written, with the reason in prose. */
+export interface RejectedUnit {
+  unit: CorrectionUnit;
+  reason: string;
+}
+
 export interface CorrectionOutcome {
   files: CorrectionFile[];
   /** Units written, for the pull request body. */
   applied: (CorrectionUnit & { text: string })[];
-  /** Translations the re-audit refused, with the audit's own sentence. */
-  rejected: { unit: CorrectionUnit; reason: string }[];
+  /** Every unit that was asked for and not written, and why. */
+  rejected: RejectedUnit[];
+  /**
+   * Units the plan asked for. Invariant: equal to
+   * `applied.length + rejected.length` — a correction cannot lose one.
+   */
+  requested: number;
   /** Findings deliberately not touched — a person still has to look. */
   leftAlone: number;
   /**
@@ -49,14 +74,28 @@ export interface CorrectionOutcome {
    * called. Zero when nothing was charged, which is also zero spent.
    */
   charged: number;
-  /** Set when nothing was attempted; null when work was done. */
+  /** Set when nothing was written at all; null when some of it was. */
   refusal: string | null;
+}
+
+/** What `/v1/translate` answers, in full. */
+export interface TranslateResult {
+  translations: {
+    key: string;
+    text: string;
+    confidence: string;
+    question?: string | null;
+  }[];
+  /** Keys the route answered without. */
+  missingKeys: string[];
+  /** Chunks the route gave up on, with the error verbatim. */
+  failures: { keys: string[]; attempts: number; error: string }[];
 }
 
 export type TranslateFn = (args: {
   targetLocale: string;
   strings: { key: string; text: string }[];
-}) => Promise<{ key: string; text: string; confidence: string }[]>;
+}) => Promise<TranslateResult>;
 
 /**
  * A composite map key, built so it cannot collide.
@@ -68,6 +107,53 @@ export type TranslateFn = (args: {
  */
 function tupleKey(a: string, b: string): string {
   return JSON.stringify([a, b]);
+}
+
+/**
+ * The reason of last resort, and it accuses this code rather than the model.
+ *
+ * If a reviewer ever reads it, a path exists that drops a unit without saying
+ * why — exactly the defect the first production cycle had. Naming it as a bug
+ * is what makes the next one visible on its first occurrence.
+ */
+export const UNEXPLAINED =
+  'this correction did not record why the translation was not written — that is a defect in the tool, not a judgement about the translation';
+
+/**
+ * The sentence for a unit the translation step did not produce.
+ *
+ * Pure and exported, so the wording is testable without a network and so the
+ * one place that decides cannot drift from the one place that explains.
+ *
+ * The order of the branches is the order of specificity. A chunk failure says
+ * what broke; a non-confident answer is the model doing its job under
+ * invariant 4, and its question is the useful part; `missingKeys` is the route
+ * stating an omission. The last branch is this tool admitting it does not know,
+ * which is a defect report and is worded as one.
+ */
+export function describeTranslationRefusal(args: {
+  result?: { text: string; confidence: string; question?: string | null };
+  /** The route listed this key in `missingKeys`. */
+  omitted: boolean;
+  /** The route reported a chunk failure covering this key. */
+  failure?: { attempts: number; error: string };
+}): string {
+  if (args.failure) {
+    const tries = `${args.failure.attempts} attempt${args.failure.attempts === 1 ? '' : 's'}`;
+    return `the translation API gave up after ${tries}: ${args.failure.error}`;
+  }
+  if (args.result && args.result.confidence !== 'confident') {
+    return args.result.question
+      ? `the model was not confident and asked: ${args.result.question}`
+      : 'the model was not confident and gave no question, so this needs a person rather than a guess';
+  }
+  if (args.result && !args.result.text) {
+    return 'the model returned an empty translation';
+  }
+  if (args.omitted) {
+    return 'the translation API answered without this key';
+  }
+  return UNEXPLAINED;
 }
 
 export async function buildCorrection(args: {
@@ -102,15 +188,56 @@ export async function buildCorrection(args: {
     maxUnits: args.maxUnits,
   });
 
+  /*
+   * The backstop. Every planned unit is either applied or explained, and a unit
+   * explained twice is left as two entries so the arithmetic breaks loudly in a
+   * test rather than being tidied away in here.
+   */
+  const reconcile = (
+    applied: readonly (CorrectionUnit & { text: string })[],
+    rejected: readonly RejectedUnit[],
+  ): RejectedUnit[] => {
+    const appliedKeys = new Set(applied.map((u) => tupleKey(u.locale, u.key)));
+    const explained = new Set<string>();
+    const out: RejectedUnit[] = [];
+    for (const entry of rejected) {
+      const key = tupleKey(entry.unit.locale, entry.unit.key);
+      if (explained.has(key)) continue;
+      explained.add(key);
+      out.push(entry);
+    }
+    for (const unit of plan.units) {
+      const key = tupleKey(unit.locale, unit.key);
+      if (appliedKeys.has(key) || explained.has(key)) continue;
+      out.push({ unit, reason: UNEXPLAINED });
+    }
+    return out;
+  };
+
+  const outcome = (partial: {
+    files: CorrectionFile[];
+    applied: (CorrectionUnit & { text: string })[];
+    rejected: readonly RejectedUnit[];
+    charged: number;
+    refusal: string | null;
+  }): CorrectionOutcome => ({
+    files: partial.files,
+    applied: partial.applied,
+    rejected: reconcile(partial.applied, partial.rejected),
+    requested: plan.units.length,
+    leftAlone: plan.leftAlone.length,
+    charged: partial.charged,
+    refusal: partial.refusal,
+  });
+
   if (plan.refusal) {
-    return {
+    return outcome({
       files: [],
       applied: [],
       rejected: [],
-      leftAlone: plan.leftAlone.length,
       charged: 0,
       refusal: plan.refusal,
-    };
+    });
   }
 
   /*
@@ -128,7 +255,8 @@ export async function buildCorrection(args: {
    * What is charged is what is *sent*, not what survives the re-audit. A
    * translation the audit then refuses still reached the model and still cost
    * money, and the counters have to say so — the same rule `/v1/translate`
-   * applies to a CLI token.
+   * applies to a CLI token. The first production cycle charged 6 and wrote 5,
+   * which is this paragraph observed rather than asserted.
    */
   let charged = 0;
   if (args.charge) {
@@ -142,14 +270,14 @@ export async function buildCorrection(args: {
        * is translating on the strength of a check that did not finish, which
        * is precisely what `chargeWorkspace` refuses to do.
        */
-      return {
+      const reason = error instanceof Error ? error.message : String(error);
+      return outcome({
         files: [],
         applied: [],
-        rejected: [],
-        leftAlone: plan.leftAlone.length,
+        rejected: plan.units.map((unit) => ({ unit, reason })),
         charged: 0,
-        refusal: error instanceof Error ? error.message : String(error),
-      };
+        refusal: reason,
+      });
     }
   }
 
@@ -160,37 +288,79 @@ export async function buildCorrection(args: {
    * same endpoint behaving differently is how one of them ends up untested.
    */
   const candidates: (CorrectionUnit & { text: string })[] = [];
+  const rejected: RejectedUnit[] = [];
+
   for (const locale of plan.locales) {
     const units = plan.units.filter((u) => u.locale === locale);
-    const results = await args.translate({
-      targetLocale: locale,
-      strings: units.map((u) => ({ key: u.key, text: u.sourceText })),
-    });
-    const byKey = new Map(results.map((r) => [r.key, r]));
+
+    let answer: TranslateResult;
+    try {
+      answer = await args.translate({
+        targetLocale: locale,
+        strings: units.map((u) => ({ key: u.key, text: u.sourceText })),
+      });
+    } catch (error) {
+      /*
+       * One locale's request failing is one locale's problem. It used to end
+       * the whole correction, so a fault on the third of six took the other
+       * three with it — and the workspace had already paid for all six. A
+       * partial correction is worth more than none, and the locales that did
+       * not land now say so by name.
+       */
+      const message = error instanceof Error ? error.message : String(error);
+      for (const unit of units) {
+        rejected.push({
+          unit,
+          reason: `the translation request for \`${locale}\` failed: ${message}`,
+        });
+      }
+      continue;
+    }
+
+    const byKey = new Map(answer.translations.map((r) => [r.key, r]));
+    const omitted = new Set(answer.missingKeys);
+    const failures = new Map<string, { attempts: number; error: string }>();
+    for (const failure of answer.failures) {
+      for (const key of failure.keys) {
+        failures.set(key, {
+          attempts: failure.attempts,
+          error: failure.error,
+        });
+      }
+    }
+
     for (const unit of units) {
       const result = byKey.get(unit.key);
       /*
-       * An ambiguous translation is not written. Invariant 4: the agent
-       * raises ambiguity rather than guessing, and a corrective pull request
-       * that quietly commits a coin flip is the guess with a commit sha on it.
-       * It stays a finding, and the check stays amber.
+       * An ambiguous translation is not written. Invariant 4: the agent raises
+       * ambiguity rather than guessing, and a corrective pull request that
+       * quietly commits a coin flip is the guess with a commit sha on it. It
+       * stays a finding and the check stays amber — and now the pull request
+       * also says which language, and what the model asked.
        */
-      if (!result || result.confidence !== 'confident' || !result.text) {
+      if (result && result.confidence === 'confident' && result.text) {
+        candidates.push({ ...unit, text: result.text });
         continue;
       }
-      candidates.push({ ...unit, text: result.text });
+      rejected.push({
+        unit,
+        reason: describeTranslationRefusal({
+          result,
+          omitted: omitted.has(unit.key),
+          failure: failures.get(unit.key),
+        }),
+      });
     }
   }
 
   if (candidates.length === 0) {
-    return {
+    return outcome({
       files: [],
       applied: [],
-      rejected: [],
-      leftAlone: plan.leftAlone.length,
+      rejected,
       charged,
       refusal: 'No confident translation came back.',
-    };
+    });
   }
 
   // The same question, asked of the corrected catalogues.
@@ -201,29 +371,32 @@ export async function buildCorrection(args: {
     dynamicCallSites: args.dynamicCallSites,
   });
 
-  const { accepted, rejected } = acceptedTranslations({
+  const audit = acceptedTranslations({
     before: args.report,
     after,
     candidates,
   });
+  rejected.push(...audit.rejected);
 
-  if (accepted.length === 0) {
-    return {
+  if (audit.accepted.length === 0) {
+    return outcome({
       files: [],
       applied: [],
       rejected,
-      leftAlone: plan.leftAlone.length,
       charged,
       refusal: 'Every translation was refused by the audit.',
-    };
+    });
   }
 
   /*
    * Grouped by file so each catalogue is read once and written once. A key
    * carries its namespace, so two namespaces in one locale are two files.
    */
-  const byFile = new Map<string, { path: string[]; value: string }[]>();
-  for (const unit of accepted) {
+  const byFile = new Map<
+    string,
+    { unit: CorrectionUnit & { text: string }; path: string[] }[]
+  >();
+  for (const unit of audit.accepted) {
     const { namespacePrefix, path } = splitKey(unit.key);
     const file = cataloguePath({
       dir: args.cataloguesDir,
@@ -231,23 +404,57 @@ export async function buildCorrection(args: {
       locale: unit.locale,
       namespacePrefix,
     });
-    const entries = byFile.get(file) ?? [];
-    entries.push({ path, value: unit.text });
-    byFile.set(file, entries);
+    byFile.set(file, [...(byFile.get(file) ?? []), { unit, path }]);
   }
 
   const files: CorrectionFile[] = [];
   const written = new Set<string>();
+
   for (const [path, entries] of byFile) {
     const original = await args.readSource(path);
-    if (original === null) continue;
-    const result = insertKeys(original, entries);
+    if (original === null) {
+      /*
+       * Used to be a bare `continue`: an accepted, paid-for translation
+       * disappeared because its file could not be read, and nothing said so.
+       */
+      for (const entry of entries) {
+        rejected.push({
+          unit: entry.unit,
+          reason: `\`${path}\` could not be read from the checkout`,
+        });
+      }
+      continue;
+    }
+
+    const result = insertKeys(
+      original,
+      entries.map((entry) => ({ path: entry.path, value: entry.unit.text })),
+    );
+
+    /*
+     * `insertKeys` refuses rather than overwrites — a key somebody already
+     * translated, or a path that would turn a translation into a group. Each
+     * refusal is now a sentence in the pull request instead of a silently
+     * shorter diff.
+     */
+    const unitByDotted = new Map(
+      entries.map((entry) => [entry.path.join('.'), entry.unit]),
+    );
+    for (const skip of result.skipped) {
+      const unit = unitByDotted.get(skip.path);
+      if (!unit) continue;
+      rejected.push({
+        unit,
+        reason: `\`${path}\` was left alone: ${skip.reason}`,
+      });
+    }
+
     if (result.inserted.length === 0) continue;
     files.push({ path, content: result.text });
     for (const dotted of result.inserted) written.add(tupleKey(path, dotted));
   }
 
-  const applied = accepted.filter((unit) => {
+  const applied = audit.accepted.filter((unit) => {
     const { namespacePrefix, path } = splitKey(unit.key);
     const file = cataloguePath({
       dir: args.cataloguesDir,
@@ -258,14 +465,13 @@ export async function buildCorrection(args: {
     return written.has(tupleKey(file, path.join('.')));
   });
 
-  return {
+  return outcome({
     files,
     applied,
     rejected,
-    leftAlone: plan.leftAlone.length,
     charged,
     refusal: files.length === 0 ? 'Nothing could be written.' : null,
-  };
+  });
 }
 
 /** Reads a catalogue out of a materialised checkout. */
@@ -274,15 +480,28 @@ export function checkoutReader(rootDir: string) {
     readFile(join(rootDir, path), 'utf-8').catch(() => null);
 }
 
-/** The body of the corrective pull request: what it did, and what it did not. */
+/**
+ * The body of the corrective pull request: what it did, and what it did not.
+ *
+ * The counts come first and they reconcile — asked for, added, left — because a
+ * reviewer's first question about a partial correction is whether anything went
+ * missing, and the first version of this body could not answer it. Five
+ * languages were listed, six had been requested, and nothing on the page said
+ * that difference existed.
+ */
 export function correctionBody(args: {
   outcome: CorrectionOutcome;
   sourceLocale: string;
   pullNumber: number;
 }): string {
-  const byLocale = new Map<string, string[]>();
-  for (const unit of args.outcome.applied) {
-    byLocale.set(unit.locale, [...(byLocale.get(unit.locale) ?? []), unit.key]);
+  const { outcome } = args;
+
+  const addedByLocale = new Map<string, string[]>();
+  for (const unit of outcome.applied) {
+    addedByLocale.set(unit.locale, [
+      ...(addedByLocale.get(unit.locale) ?? []),
+      unit.key,
+    ]);
   }
 
   const lines = [
@@ -292,28 +511,43 @@ export function correctionBody(args: {
     'by the same audit that reported it missing — placeholders and ICU included.',
     'Keys that already had a translation were not touched.',
     '',
+    `**${outcome.requested} asked for · ${outcome.applied.length} added · ${outcome.rejected.length} left for a person.**`,
+    '',
   ];
 
-  for (const [locale, keys] of [...byLocale].sort()) {
-    lines.push(`- **${locale}** — ${keys.map((k) => `\`${k}\``).join(', ')}`);
+  if (addedByLocale.size > 0) {
+    lines.push('### Added', '');
+    for (const [locale, keys] of [...addedByLocale].sort()) {
+      lines.push(`- **${locale}** — ${keys.map((k) => `\`${k}\``).join(', ')}`);
+    }
+    lines.push('');
   }
 
-  if (args.outcome.rejected.length > 0) {
+  /*
+   * Named one by one rather than counted. "1 was refused" tells a reviewer
+   * something is missing without telling them which language to go and look
+   * at, which is the same silence the count was meant to break.
+   */
+  if (outcome.rejected.length > 0) {
     lines.push(
+      '### Not translated, and left for a person',
       '',
-      'Refused by the audit and left for a person:',
-      ...args.outcome.rejected.map(
-        (r) => `- \`${r.unit.key}\` (${r.unit.locale}) — ${r.reason}`,
+      ...outcome.rejected.map(
+        (entry) =>
+          `- **${entry.unit.locale}** — \`${entry.unit.key}\`: ${entry.reason}`,
       ),
-    );
-  }
-
-  if (args.outcome.leftAlone > 0) {
-    lines.push(
       '',
-      `${args.outcome.leftAlone} other finding${args.outcome.leftAlone === 1 ? '' : 's'} on #${args.pullNumber} ${args.outcome.leftAlone === 1 ? 'is' : 'are'} not corrected automatically — a changed placeholder or a key the source does not define needs a decision, not a translation.`,
+      `The check on #${args.pullNumber} still reports these, so merging this`,
+      'pull request does not resolve them.',
+      '',
     );
   }
 
-  return lines.join('\n');
+  if (outcome.leftAlone > 0) {
+    lines.push(
+      `${outcome.leftAlone} other finding${outcome.leftAlone === 1 ? '' : 's'} on #${args.pullNumber} ${outcome.leftAlone === 1 ? 'is' : 'are'} not corrected automatically — a changed placeholder or a key the source does not define needs a decision, not a translation.`,
+    );
+  }
+
+  return lines.join('\n').trimEnd();
 }
