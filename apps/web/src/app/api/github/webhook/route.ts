@@ -1,4 +1,8 @@
-import { CHECK_NAME, publishCheck } from '@/lib/github/checks';
+import {
+  CHECK_NAME,
+  type CorrectionReport,
+  publishCheck,
+} from '@/lib/github/checks';
 import { readGitHubApp } from '@/lib/github/config';
 import { materialiseRepository } from '@/lib/github/materialise';
 import { decideWebhook, verifySignature } from '@/lib/github/webhook';
@@ -15,6 +19,7 @@ import { chargeWorkspace } from '@/lib/quota/charge';
 import { resolveInstallationWorkspace } from '@/lib/quota/installation';
 import { loadI18nextCatalogues } from '@localize-infra/core';
 import type { AuditReport } from '@localize-infra/eval';
+import { after } from 'next/server';
 import { App } from 'octokit';
 
 /**
@@ -40,21 +45,28 @@ import { App } from 'octokit';
  * signature answers 401, because that one genuinely should be visible in the
  * delivery log.
  *
- * ## The timeout is still the ceiling, and this is sized to stay under it
+ * ## Two timeouts, not one, and this paragraph used to know about only the first
  *
- * The analysis is pure computation over the files a pull request touched, and
- * that half still calls no model.
+ * Vercel's is 300 seconds. **GitHub's is ten**, for the delivery, and that is
+ * the one that bit. The analysis is pure computation and fits; the correction
+ * calls a model and does not. Measured on 2026-10-02: the quota charge landed
+ * at 9.2s with the model call after it, so every delivery that corrected was
+ * recorded as `context deadline exceeded` — a 500 in the delivery log, and the
+ * response body, which carried the correction's report, discarded unread.
+ * GitHub gave up after one attempt, so no retry storm; but a hook that
+ * accumulates failures gets disabled.
  *
- * **The correction below does**, which this paragraph used to say would need a
- * queue. It does not have one, and the reason is a ceiling instead:
- * `planCorrection` refuses past `MAX_CORRECTION_UNITS`, so the work a single
- * delivery can take on is bounded before any of it starts. A bulk import is
- * refused with a sentence rather than begun and lost to a timeout.
+ * So the response goes out as soon as the check is published, and the
+ * correction runs in `after`. Still no queue: the work happens in this same
+ * invocation, still bounded by `MAX_CORRECTION_UNITS` before any of it starts,
+ * still lost if the function dies. What changed is who hears about it — the
+ * correction now reports itself onto the check run, the one surface a human
+ * reads, instead of into a response nobody receives.
  *
- * The ordering carries the rest. The check is published *before* the
- * correction is attempted, so a correction that times out still leaves the
- * reviewer told what is wrong — the finding is the product's promise, the fix
- * is the convenience.
+ * The ordering still carries the rest. The check is published *before* the
+ * correction is attempted, so a correction that dies leaves the reviewer told
+ * what is wrong — the finding is the product's promise, the fix is the
+ * convenience.
  *
  * ## And the ceiling is no longer the only thing bounding the spend
  *
@@ -230,22 +242,76 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     /*
-     * The correction, after the check and never instead of it.
+     * The correction, after the check, after the response, and never instead
+     * of the check.
      *
-     * Ordering matters: the check is the product's promise and costs nothing,
-     * so it is published before anything that can fail or time out. A
-     * correction that dies half-way leaves a pull request that has still been
-     * told what is wrong with it.
+     * Ordering matters twice over. The check is the product's promise and costs
+     * nothing, so it is published before anything that can fail. And the
+     * response is returned before the correction starts, because GitHub waits
+     * ten seconds and no longer: measured on 2026-10-02, the quota charge alone
+     * landed at 9.2s with the model call after it, so every delivery that
+     * corrected was recorded as `context deadline exceeded` — a 500 in the
+     * delivery log, and the body, which carried the correction's own report,
+     * discarded unread. Enough of those and GitHub disables the hook.
+     *
+     * `after` runs the rest once the response is sent. It is not a queue and
+     * does not pretend to be one: the work still happens inside this
+     * invocation, still bounded by `MAX_CORRECTION_UNITS`, still lost if the
+     * function dies. What changes is that GitHub gets its answer in time, and
+     * the correction reports itself on the check instead of into a response
+     * nobody receives.
      */
-    let correction: Record<string, unknown> = { attempted: false };
-    if (analysis.audited && report.findings.length > 0) {
-      correction = await correct({
-        octokit,
-        decision,
-        report,
-        audited: analysis.audited,
-        checkoutDir: materialised.dir,
+    const audited = analysis.audited;
+    const correcting = Boolean(audited) && report.findings.length > 0;
+
+    if (audited && correcting) {
+      const checkoutDir = materialised.dir;
+      const skipped = analysis.skipped;
+
+      after(async () => {
+        try {
+          const correction = await correct({
+            octokit,
+            decision,
+            report,
+            audited,
+            checkoutDir,
+          });
+
+          /*
+           * The same `publishCheck`, with the run id it already returned.
+           * GitHub keys check runs by `(name, head_sha)`, so this updates the
+           * one above rather than stacking a second — and passing the id means
+           * a failed lookup cannot fall back to creating a duplicate.
+           */
+          await publishCheck({
+            checks: octokit.rest.checks as never,
+            owner: decision.owner,
+            repo: decision.repo,
+            headSha: decision.headSha,
+            report,
+            skipped,
+            checkRunId,
+            correction,
+          });
+        } catch (error) {
+          /*
+           * Nothing downstream will see this: the response is long gone and
+           * GitHub's delivery log holds a 200. The log line is the only record,
+           * so it is logged whole.
+           */
+          console.error('i18n correction (after response) failed:', error);
+        } finally {
+          await discardCheckout(checkoutDir);
+        }
       });
+
+      /*
+       * Ownership of the checkout moves to the task above, so the handler's
+       * `finally` must not delete it. Assigned only once `after` has accepted
+       * the callback: the other order would leak the directory if it threw.
+       */
+      checkout = null;
     }
 
     return ok('analysed', {
@@ -254,7 +320,11 @@ export async function POST(request: Request): Promise<Response> {
       findings: report.findings.length,
       skipped: analysis.skipped,
       catalogueFilesCompared: base.touched.length,
-      correction,
+      /*
+       * Whether a correction is running, not what it did — it has not started
+       * yet. What it did goes on the check.
+       */
+      correcting,
     });
   } catch (error) {
     /*
@@ -299,11 +369,14 @@ async function correct(args: {
     Awaited<ReturnType<typeof analysePullRequest>>['audited']
   >;
   checkoutDir: string;
-}): Promise<Record<string, unknown>> {
+}): Promise<CorrectionReport> {
   const apiUrl = process.env.LOCALIZE_API_URL;
   const apiToken = process.env.LOCALIZE_API_TOKEN;
   if (!apiUrl || !apiToken) {
-    return { attempted: false, reason: 'translation API not configured' };
+    return {
+      attempted: false,
+      reason: 'the translation API is not configured on this deployment',
+    };
   }
 
   if (!correctableDirectory(args.audited.cataloguesDir)) {
@@ -331,8 +404,14 @@ async function correct(args: {
   const workspace = await resolveInstallationWorkspace(
     args.decision.installationId,
   );
-  if (!workspace.organizationId) {
-    return { attempted: false, charged: 0, reason: workspace.reason };
+  /*
+   * `=== null`, not `!`. The union discriminates on `organizationId` being a
+   * string or null, and a truthiness test cannot rule out the empty string — so
+   * `!workspace.organizationId` leaves `reason` as `string | null` and the
+   * refusal loses its sentence. The compiler said so.
+   */
+  if (workspace.organizationId === null) {
+    return { attempted: false, reason: workspace.reason };
   }
   const organizationId = workspace.organizationId;
 
@@ -372,16 +451,18 @@ async function correct(args: {
     });
 
     if (outcome.refusal) {
+      /*
+       * Nothing to open, so nothing is opened — an empty corrective pull
+       * request is the defect that produced five of them on the fixture in two
+       * days. The reasons go on the check instead, which is the only surface a
+       * total refusal has.
+       */
       return {
         attempted: true,
-        opened: false,
         requested: outcome.requested,
-        charged: outcome.charged,
-        refusals: outcome.rejected.map((entry) => ({
-          locale: entry.unit.locale,
-          key: entry.unit.key,
-          reason: entry.reason,
-        })),
+        applied: 0,
+        refusals: describeRefusals(outcome.rejected),
+        pr: null,
         reason: outcome.refusal,
       };
     }
@@ -419,29 +500,38 @@ async function correct(args: {
       attempted: true,
       requested: outcome.requested,
       applied: outcome.applied.length,
-      rejected: outcome.rejected.length,
-      /*
-       * The reasons, not just the count. This reply is what GitHub's delivery
-       * log keeps, and it is the only record of a correction that a repository
-       * owner can read after the fact — a bare count sent somebody to the
-       * Vercel logs to find out which language was dropped, and the logs did
-       * not know either.
-       */
-      refusals: outcome.rejected.map((entry) => ({
-        locale: entry.unit.locale,
-        key: entry.unit.key,
-        reason: entry.reason,
-      })),
-      leftAlone: outcome.leftAlone,
-      charged: outcome.charged,
-      ...opened,
+      refusals: describeRefusals(outcome.rejected),
+      pr: opened.opened ? { number: opened.prNumber, url: opened.prUrl } : null,
+      reason: opened.opened ? null : opened.reason,
     };
   } catch (error) {
+    /*
+     * Logged whole, and reported on the check as a correction that was
+     * attempted and produced nothing. `requested: 0` because the count is not
+     * knowable from here — the throw may have come before the plan existed.
+     */
     console.error('i18n correction failed:', error);
     return {
       attempted: true,
-      opened: false,
+      requested: 0,
+      applied: 0,
+      refusals: [],
+      pr: null,
       reason: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/** The rejected units, flattened to what the check and the logs print. */
+function describeRefusals(
+  rejected: readonly {
+    unit: { locale: string; key: string };
+    reason: string;
+  }[],
+): { locale: string; key: string; reason: string }[] {
+  return rejected.map((entry) => ({
+    locale: entry.unit.locale,
+    key: entry.unit.key,
+    reason: entry.reason,
+  }));
 }
