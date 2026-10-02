@@ -288,6 +288,13 @@
   reste juste : ce processus authentifie un jeton, pas un workspace, et le
   bearer opérateur ne nomme aucune organisation à débiter.
 
+  **Et il y a eu un troisième cas, de la même forme exactement.** Le webhook
+  GitHub a gagné une étape de correction (#132) qui appelle un modèle, avec un
+  commentaire expliquant qu'elle n'avait pas besoin de quota. Fermé en #133 en
+  résolvant l'organisation depuis `organization_github_installations` — voir
+  `apps/web` plus bas. Le motif, trois fois de suite : **une phrase qui décrit un
+  contrôle inexistant est ce qui fait que personne ne va voir.**
+
   **Un refus interrompt le run au lieu d'être isolé.** `QuotaRefusal` est
   relevée par le `catch` par locale ; sans cela un refus honnête en deviendrait
   quatre — un par langue — et le run se dirait `partial`.
@@ -615,6 +622,15 @@
   contredire celui contre lequel le plafond est appliqué — et la page promettrait
   alors du budget que l'API refuse.
 
+  **Elle montre désormais aussi ce que les corrections de PR ont dépensé**, sans
+  une ligne de changement : depuis #133 le webhook débite la même table. La page
+  n'a donc pas de rubrique « runs » et « corrections » séparées, et c'est
+  cohérent avec ce que le plafond veut dire — un workspace, un plafond, quel que
+  soit le chemin. Ce qu'elle n'attribue pas, en revanche, c'est **quel** chemin a
+  dépensé : `api_usage_daily` ne porte pas cette colonne. Les derniers runs
+  qu'elle liste viennent de `runs`, donc une dépense de correction apparaît dans
+  le total du jour sans run correspondant.
+
   **Zéro y est affiché, et ce n'est pas la règle du funnel qui casse.**
   `lib/metrics/funnel.ts` refuse d'écrire zéro pour ce que personne ne mesure, et
   il a raison. Ici c'est le cas inverse : `consume_api_quota` crée la ligne à la
@@ -804,8 +820,12 @@
   `POST /api/github/webhook` (`apps/web`) reçoit, `packages/core/src/i18n`
   lit — bibliothèque i18n, clés appelées, catalogues — et
   `packages/eval/src/audit` juge, en réutilisant `extractPlaceholders`,
-  `isIcuMessage` et `validateIcu`, déjà sous gate CI à 99,5 %. Aucun modèle
-  n'est appelé sur ce chemin : pas de coût, pas de quota, pas de file.
+  `isIcuMessage` et `validateIcu`, déjà sous gate CI à 99,5 %.
+
+  **Cette phrase disait « Aucun modèle n'est appelé sur ce chemin : pas de coût,
+  pas de quota, pas de file ». Elle est fausse depuis #132.** L'analyse, elle,
+  n'appelle toujours aucun modèle — mais la correction qui la suit en appelle un,
+  et le quota existe depuis #133. Voir « La boucle se ferme » plus bas.
 
   **Prouvé contre un vrai dépôt, pas seulement en test.** PR #13 de
   `localize-infra-fixture-i18next` ajoute `app.continuousTest` à
@@ -833,6 +853,12 @@
   fichiers d'une PR — **ce qui cesserait d'être vrai si une étape de correction
   était ajoutée**, le run redevenant une somme d'appels modèle.
 
+  **Cette étape a été ajoutée, et la prédiction était à moitié juste.** Il n'y a
+  toujours pas de file : la borne est `MAX_CORRECTION_UNITS`, posée avant que
+  quoi que ce soit ne démarre. Mais les deux premières moitiés ont tenu
+  (idempotence et prévention de boucle, inchangées), et c'est le **délai de
+  livraison de GitHub** qui a cassé, pas le budget. Voir plus bas.
+
   **`neutral`, jamais `failure`.** Personne n'a accepté que ça bloque une
   fusion, et rougir sur un dépôt à checks obligatoires arrêterait le travail de
   quelqu'un sur la foi d'une hypothèse qu'aucun utilisateur n'a validée. Ça
@@ -843,6 +869,213 @@
   problems found » sur un dépôt dont rien n'a été lu est un silence qui se lit
   comme une approbation — précisément le défaut que ce produit prétend
   supprimer.
+
+  #### La boucle se ferme : le Check corrige ce qu'il trouve
+
+  **Le cycle complet tourne** (#132 le 2026-09-29, puis #133 à #136 le
+  2026-10-02) : `PR GitHub → analyse → Check → quota → traduction → PR
+  corrective → fusion → synchronize → Check`. Un seul cas supporté, et c'est
+  délibéré : une clé ajoutée dans la locale source et absente d'une ou plusieurs
+  locales cibles. Tout le reste est laissé visible et non touché.
+
+  L'ordre *est* la propriété de sûreté : **plan → charge → traduction →
+  ré-audit → écriture**. Le ré-audit n'est pas une formalité — les catalogues
+  corrigés repassent par le même `auditI18n` qui a produit les findings, et une
+  traduction n'est écrite que si cette fonction ne dit plus rien d'elle. Un
+  modèle qui laisse tomber `{{name}}` est arrêté là, avant le commit, par le code
+  qui l'aurait sinon attrapé un Check plus tard.
+
+  Ce qui est refusé plutôt que deviné : `placeholder-mismatch`, `icu-invalid` et
+  `missing-source` ne sont jamais corrigés — lequel des deux côtés a tort est un
+  jugement, et écraser une traduction humaine pour verdir un Check est l'inverse
+  de ce que le Check sert. `insertKeys` refuse au lieu d'écraser, y compris le
+  cas où `a.b` transformerait la traduction `a` en groupe. Et une traduction
+  `ambiguous` n'est pas commitée : invariant 4.
+
+  ##### Le quota : `installation_id → workspace → chargeWorkspace` (#133, `14c4aa1`)
+
+  La correction atteignait un modèle payant sans que rien ne le compte.
+  `chargeWorkspace` exige une organisation ; un webhook authentifie une
+  **installation**. La seule borne était `MAX_CORRECTION_UNITS` — 40 paires par
+  livraison, et rien du tout par jour.
+
+  Même forme que le défaut que `apps/api/src/quota.ts` décrivait et que ce même
+  dépôt a reproduit : une phrase qui explique pourquoi un garde-fou est inutile,
+  posée là où le garde-fou devrait être.
+
+  **Aucune migration, aucune fonction, aucun compteur neuf.**
+  `organization_github_installations` porte la correspondance depuis
+  `20260817000600` et son `installation_id` est `unique`, donc une livraison
+  résout vers au plus un workspace. Personne ne posait la question à cette table.
+  `consume_api_quota` et `api_usage_daily` sont ceux du navigateur et du CLI — le
+  plafond était déjà clé par workspace.
+
+  La lecture passe par la clé `service_role` parce qu'**il n'y a pas de session à
+  utiliser** : la seule policy de la table veut un membre authentifié, et à
+  l'autre bout de la requête il y a GitHub.
+
+  Trois refus, tous fail-closed, trois phrases distinctes — non connecté /
+  `SUPABASE_SERVICE_ROLE_KEY` absente, nommée / lecture échouée. La première se
+  règle dans le dashboard en une minute, les deux autres sont des problèmes
+  d'opérateur, et c'est ce qui les sépare.
+
+  **Une seule charge atomique pour tout le plan, jamais par locale.**
+  `run-actions.ts` débite par locale parce qu'une reprise garde ce qu'elle a
+  acheté ; ici il n'y a pas de reprise — une correction est une PR ou rien —
+  donc un refus sur la quatrième de six locales jetterait trois locales déjà
+  payées. C'est la panne pour laquelle `lib/quota/preflight.ts` existe.
+
+  **`open_pr` avant `translate`**, pour ne jamais acheter la moitié chère d'une
+  correction que le plafond ne laissera pas livrer. Et pas plus tôt : une
+  livraison qui ne planifie rien est le cas courant, puisqu'un
+  `placeholder-mismatch` est toujours laissé à une personne.
+
+  ##### Le premier vrai cycle, et ce qu'il a trouvé (2026-10-02)
+
+  PR #15 du fixture ajoute **une** clé anglaise, `errors.timeout`, et rien
+  d'autre. Six findings, Check `neutral` en moins de 10 s, PR corrective #16 en
+  moins de 30 s, cinq locales écrites, fusionnée, `synchronize`, et le Check
+  passe de **6 problèmes à 1**. Aucune traduction existante touchée, aucun
+  fichier source modifié, `main` du fixture intact.
+
+  Base de référence prise **avant** : aucune ligne `api_usage_daily` pour la
+  journée, aucune fenêtre `api_rate_windows` clé par workspace. L'apparition des
+  lignes est donc la preuve, pas un delta interprété. Après : deux lignes de
+  fenêtre avec `organization_id` et `token_id` **null** — la forme exacte
+  qu'impose `check (num_nonnulls(token_id, organization_id) = 1)` — et aucune
+  ligne clé par jeton. Rien n'a été dépensé hors quota.
+
+  Deux faits que seul le réel pouvait donner :
+
+  - **6 débités, 5 livrés.** « On facture ce qui est *envoyé*, pas ce qui survit
+    au ré-audit » — écrit d'abord, observé ensuite.
+  - **`prs_opened` monte sans qu'une PR s'ouvre.** C'est le coût assumé de
+    l'ordre `open_pr` avant `translate`, constaté deux fois.
+
+  **Et l'allemand a disparu sans laisser de trace.** Ni dans le corps de la PR,
+  ni dans la réponse du webhook, ni dans un log. Le titre disait « add 5 missing
+  translations » alors que six avaient été demandées : le seul nombre visible
+  sans rien ouvrir était celui qui cachait le trou.
+
+  ##### Rien ne peut plus disparaître en silence (#134, `a0aa8f1`)
+
+  Trois chemins muets, tous de la même famille :
+
+  - `translateBatch` jetait `missingKeys` et `failures` de la réponse et
+    transmettait `confidence` **sans** le `question` qui l'accompagne. La réponse
+    portait la raison et l'appelant la jetait ;
+  - la boucle des candidats abandonnait une traduction non-confident ou absente
+    par un `continue` nu ;
+  - la boucle d'écriture le faisait **deux fois de plus** — un catalogue
+    illisible, et une clé que `insertKeys` refuse. Celui-là n'a jamais été
+    observé : il a été trouvé en cherchant les frères du premier.
+
+  Désormais `requested === applied.length + rejected.length`, **toujours**, et
+  c'est structurel et non une discipline : chaque chemin explique ses propres
+  refus, et une passe de réconciliation étiquette tout reliquat comme « un défaut
+  de l'outil, pas un jugement sur la traduction », dans ces termes. Le prochain
+  trou se signale à sa première occurrence au lieu d'attendre qu'on remarque une
+  langue manquante.
+
+  `describeTranslationRefusal` donne à chaque cause sa phrase, parce que chacune
+  a son remède : un échec de chunk se retente, un retour non-confident porte la
+  question du modèle et demande une personne, `missingKeys` est la route qui
+  déclare une omission, et la dernière branche accuse ce code.
+
+  Un échec de requête sur une locale n'emporte plus les autres : il devient
+  l'entrée de cette locale, et une correction partielle atterrit quand même.
+
+  ##### Le délai de GitHub est de dix secondes, et il a fallu deux PR pour le voir
+
+  **C'est le fait le plus coûteux de la journée.** Le timeout de Vercel est de
+  300 s ; **celui de la livraison GitHub est de 10 s**. Toute livraison qui
+  travaillait était enregistrée en **500 `context deadline exceeded`** ; la seule
+  qui répondait 200 était celle que le webhook déclinait instantanément par le
+  préfixe de branche. Six d'affilée.
+
+  Conséquence qui a invalidé un correctif tout juste livré : **la réponse HTTP du
+  webhook n'est pas une surface de compte rendu.** #134 venait d'y mettre la liste
+  des refus — morte à l'arrivée. Et le cas qui n'a aucune autre surface l'a
+  prouvé : quand *tout* est refusé il n'y a pas de PR corrective, donc la raison
+  n'existait nulle part qu'un humain puisse atteindre.
+
+  **#135 (`9b71cf1`) a visé la mauvaise moitié.** Il a déplacé la correction dans
+  `after` et porté son compte rendu sur le Check — ça, ça marche et c'est
+  vérifié. Mais son titre annonçait « answer GitHub in time », et **c'était
+  faux** : remesurée, la livraison mourait toujours à **10,003 s**, la limite à
+  la milliseconde, parce que l'analyse la dépasse à elle seule —
+  `materialiseRepository` télécharge et décompresse un tarball de dépôt avant que
+  quoi que ce soit ne soit lu. Le débit du quota est passé de 9,2 s à 11,5 s,
+  c'est-à-dire de *juste* trop tard à franchement trop tard.
+
+  **#136 (`9502c16`) coupe là où le réseau commence.** Avant la réponse : une
+  lecture d'environnement, un HMAC, un `JSON.parse`, `decideWebhook`. Après, dans
+  `handleDelivery` : le jeton d'installation, la liste des fichiers, le tarball,
+  l'analyse, le Check, la correction, le nettoyage. Vérifié contre une vraie
+  livraison :
+
+  | | |
+  |---|---|
+  | push | +0,0 s |
+  | `pull_request.synchronize` → **OK 200** | +3,3 s |
+  | quota débité, en arrière-plan | +11,7 s |
+
+  Toujours pas de file, et il ne faut pas s'y tromper : le travail se fait dans
+  la même invocation, borné par `MAX_CORRECTION_UNITS` avant de démarrer, et
+  perdu si la fonction meurt.
+
+  **Ce que ça coûte.** Rien après la réponse ne peut se rapporter en retournant.
+  Deux choses remplacent ça : chaque échec est journalisé avec
+  `owner/repo#N (sha)`, et chaque échec qui atteint encore GitHub s'écrit sur le
+  Check en « Not analysed », `neutral`, erreur verbatim tronquée. Un échec qui
+  n'atteint pas GitHub ne laisse que le log — c'est écrit tel quel, pas
+  sous-entendu.
+
+  **Un défaut trouvé en écrivant ce remplacement, pas après.** Un échec survenant
+  *après* la publication des findings écraserait « 6 i18n problems » par « Not
+  analysed » et détruirait la seule chose que le relecteur avait.
+  `publishAnalysisFailure` refuse par `alreadyPublished` : un rapport plus tardif
+  et plus pauvre ne gagne pas, et le log le garde.
+
+  ##### L'allemand, et pourquoi il fallait le rendre lisible
+
+  Trois refus silencieux d'affilée, puis la question est apparue sur le Check :
+
+  > *the model was not confident and asked: Should the message use formal 'Sie'
+  > or informal 'du' address, consistent with the rest of the app's voice?*
+
+  Elle est **bonne** — le registre allemand ne se déduit pas d'une chaîne isolée.
+  Le produit faisait exactement ce que l'invariant 4 demande, et personne ne
+  pouvait le voir. La leçon qui dépasse ce cas : **un refus que personne ne peut
+  lire est indiscernable d'un bug**, et il a d'ailleurs été pris pour un bug
+  pendant trois livraisons.
+
+  PR #15 reste ouverte à `1 i18n problem`. La fermer demande une décision humaine
+  sur le registre, pas une traduction de plus.
+
+  ##### Outillage et pièges, pour ne pas les redécouvrir
+
+  **`GET /app/hook/deliveries` exige un JWT d'App**, pas le jeton utilisateur :
+  `gh api` échoue en 401. Un script de 40 lignes qui signe un RS256 avec la clé
+  de `GITHUB_APP_PRIVATE_KEY_PATH` suffit. C'est la **seule** source qui dit si
+  GitHub a essayé et avec quel code — aucun log applicatif ne peut le dire, et
+  c'est elle qui a révélé les six 500.
+
+  **Les identifiants de livraison ont 19 chiffres.** `res.json()` les passe par
+  un `Number` et perd la précision, donc la requête par identifiant répond 404.
+  C'est un défaut de la sonde, pas du produit — la colonne de statut de la liste
+  reste exploitable, et c'est pour ça que le corps de la réponse n'a jamais été
+  lu directement.
+
+  **`=== null` et non `!` sur une union discriminée.** `resolveInstallationWorkspace`
+  rend `{ organizationId: string; reason: null } | { organizationId: null; reason:
+  string }` ; `!workspace.organizationId` ne peut pas exclure la chaîne vide, donc
+  `reason` restait `string | null` et le refus perdait sa phrase. C'est le
+  compilateur qui l'a dit, pas la relecture.
+
+  **`after` vient de `next/server`** (Next 16.3.1) et n'a demandé aucune
+  dépendance. Vérifié à l'exécution avant d'être employé : sur cette version il
+  est bien exporté.
 
   #### Le piège qui a coûté la journée : App ≠ installation
 
@@ -867,6 +1100,14 @@
   livraison ; **« Run pipeline » depuis le navigateur, si** — il le résout
   depuis cette ligne, et il a été cassé entre la réinstallation et la mise à
   jour.
+
+  **Cette phrase est périmée depuis #133 et c'est important.** Le webhook lit
+  toujours l'identifiant dans la livraison pour *agir*, mais il lit désormais
+  cette ligne pour savoir **qui paie** — et il échoue fermé si elle n'y est pas :
+  aucune traduction, un Check qui le dit. Donc une ligne fausse ou absente ne
+  casse plus seulement le bouton du navigateur, elle désarme la correction
+  automatique. Vérifié avant de livrer #133 plutôt que supposé : `166148995`
+  résout bien vers `layersky` en production.
 
   La règle : **écrire l'`UPDATE` ne prouve pas qu'il marche.** Ce qui le prouve
   est d'émettre un jeton d'installation pour l'identifiant désormais stocké et
@@ -893,6 +1134,18 @@
   **Un `keySeparator` personnalisé n'est pas supporté** et produirait des clés
   manquantes fausses. Seuls `public/locales`, `locales` et `src/locales` sont
   cherchés.
+
+  **La correction n'écrit que sous `locales/`**, alors que l'analyse lit aussi
+  `public/locales` et `src/locales`. La liste blanche de chemins de
+  `/v1/open-pr` exige `locales` comme premier segment, donc un dépôt dont les
+  catalogues sont ailleurs est **analysable et non corrigeable** —
+  `correctableDirectory` le dit avant de dépenser, plutôt que de le découvrir en
+  400 une fois les traductions payées.
+
+  **Un run perdu est perdu.** Le travail vit dans l'invocation ; si la fonction
+  meurt, il n'y a ni file ni reprise. La borne est `MAX_CORRECTION_UNITS = 40`
+  paires par livraison, posée avant que rien ne démarre — au-delà, la correction
+  refuse avec une phrase plutôt que de commencer ce qu'elle ne finira pas.
 
   **Et l'hypothèse produit n'est toujours pas validée.** Le slice marche ; rien
   ne dit qu'il sert à quelqu'un. §C1 est intact : une organisation en
