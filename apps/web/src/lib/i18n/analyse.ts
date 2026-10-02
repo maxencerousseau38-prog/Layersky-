@@ -1,6 +1,7 @@
 import 'server-only';
 import { rm } from 'node:fs/promises';
 import { analysableFiles } from '@/lib/github/webhook';
+import type { LoadedCatalogues } from '@localize-infra/core';
 import {
   detectI18nLibrary,
   distinctKeys,
@@ -30,6 +31,21 @@ export interface AnalysisResult {
   report: AuditReport | null;
   /** Why no audit was run. Null when one was. */
   skipped: string | null;
+  /**
+   * What the audit was given, so a correction can ask the same question.
+   *
+   * Returned rather than recomputed by the caller: re-deriving the key set
+   * would be a second answer to a question this function already settled, and
+   * the two would drift the first time the scope rules change. Null when no
+   * audit ran.
+   */
+  audited: {
+    usedKeys: string[];
+    catalogues: Record<string, Record<string, string>>;
+    dynamicCallSites: number;
+    cataloguesDir: string;
+    layout: NonNullable<LoadedCatalogues['layout']>;
+  } | null;
 }
 
 export interface AnalyseArgs {
@@ -102,6 +118,7 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
   if (!library) {
     return {
       report: null,
+      audited: null,
       skipped:
         'No i18n library found in package.json, so there is nothing to check.',
     };
@@ -109,6 +126,7 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
   if (!library.supported) {
     return {
       report: null,
+      audited: null,
       skipped: `This repository uses ${library.packageName}, which Layersky does not analyse yet. Only i18next is supported today.`,
     };
   }
@@ -117,6 +135,7 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
   if (catalogues.layout === null) {
     return {
       report: null,
+      audited: null,
       skipped:
         'No i18next catalogues were found in public/locales, locales or src/locales, so nothing could be compared.',
     };
@@ -126,6 +145,7 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
   if (!catalogues.catalogues[sourceLocale]) {
     return {
       report: null,
+      audited: null,
       skipped: `No \`${sourceLocale}\` catalogue was found, so there is no source of truth to compare against.`,
     };
   }
@@ -165,6 +185,14 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
       dynamicCallSites: scan.dynamicCallSites,
     }),
     skipped: null,
+    audited: {
+      usedKeys,
+      catalogues: catalogues.catalogues,
+      dynamicCallSites: scan.dynamicCallSites,
+      // Non-null by the guard above: `layout === null` returned already.
+      cataloguesDir: catalogues.dir as string,
+      layout: catalogues.layout,
+    },
   };
 }
 
