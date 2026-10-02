@@ -2,7 +2,15 @@ import 'server-only';
 import { createAdminClient, readServiceRoleKey } from '@/lib/supabase/admin';
 
 /**
- * What a workspace may spend from the browser.
+ * What a workspace may spend from this app.
+ *
+ * This said "from the browser" while the browser was the only caller. The
+ * GitHub webhook is the second, since it gained a correction step that calls a
+ * model; it resolves its workspace from the delivery's installation
+ * (`lib/quota/installation.ts`) and then charges exactly the same way. Nothing
+ * below changed to admit it — the function always took an organization, and
+ * the webhook's problem was never this file, it was having no organization to
+ * give it.
  *
  * ## Why this exists at all
  *

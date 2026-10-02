@@ -135,6 +135,7 @@ describe('the correction cycle, on the fixture shape', () => {
     );
 
     // ── correction ──
+    const spend: string[] = [];
     const outcome = await buildCorrection({
       report: first.report as NonNullable<typeof first.report>,
       catalogues: first.audited?.catalogues ?? {},
@@ -144,13 +145,29 @@ describe('the correction cycle, on the fixture shape', () => {
       cataloguesDir: 'locales',
       layout: 'directory-per-locale',
       readSource: checkoutReader(root),
-      translate: async ({ targetLocale, strings }) =>
-        strings.map((s) => ({
+      charge: async (units) => {
+        spend.push(`charge:${units}`);
+      },
+      translate: async ({ targetLocale, strings }) => {
+        spend.push(`translate:${targetLocale}`);
+        return strings.map((s) => ({
           key: s.key,
           text: `[${targetLocale}] ${s.text}`,
           confidence: 'confident',
-        })),
+        }));
+      },
     });
+
+    /*
+     * The workspace is charged once, for all six languages, before the first
+     * of them reaches a model. This is the multi-locale case on the real
+     * fixture shape: one key, six targets, six string-language pairs — the
+     * same unit `consume_api_quota` counts for a browser run and for a CLI
+     * token.
+     */
+    expect(spend[0]).toBe('charge:6');
+    expect(spend.filter((s) => s.startsWith('charge:'))).toHaveLength(1);
+    expect(outcome.charged).toBe(6);
 
     expect(outcome.refusal).toBeNull();
     expect(outcome.applied).toHaveLength(6);
@@ -257,5 +274,76 @@ describe('the correction cycle, on the fixture shape', () => {
     expect(fr.auth.signOut).toBe('Se déconnecter');
     // The human translation already in the file is untouched.
     expect(fr.auth.signIn).toBe('Se connecter');
+  });
+
+  /*
+   * The same cycle, for a workspace that cannot pay for it.
+   *
+   * The check has already been published by the time the correction is
+   * attempted, so what this asserts is the other half of that promise: a
+   * refusal costs nothing, reaches no model, and leaves every catalogue on
+   * disk exactly as it found them. A workspace out of budget gets the finding
+   * and not the fix.
+   */
+  it('reaches no model and writes nothing when the workspace cannot be charged', async () => {
+    const before = baseCatalogues();
+
+    const en = JSON.parse(
+      readFileSync(join(root, 'locales', 'en', 'common.json'), 'utf-8'),
+    );
+    en.app.cancel = 'Cancel';
+    writeFileSync(
+      join(root, 'locales', 'en', 'common.json'),
+      `${JSON.stringify(en, null, 2)}\n`,
+    );
+
+    const onDiskBefore = LOCALES.map((locale) =>
+      readFileSync(join(root, 'locales', locale, 'common.json'), 'utf-8'),
+    );
+
+    const analysis = analysePullRequest({
+      rootDir: root,
+      changedFiles: ['locales/en/common.json'],
+      sourceLocale: 'en',
+      baseCatalogues: before,
+    });
+    // Non-vacuous: there is real work here, and it is the refusal that stops
+    // it rather than there being nothing to do.
+    expect(analysis.report?.findings).toHaveLength(6);
+
+    let translated = 0;
+    const outcome = await buildCorrection({
+      report: analysis.report as NonNullable<typeof analysis.report>,
+      catalogues: analysis.audited?.catalogues ?? {},
+      sourceLocale: 'en',
+      usedKeys: analysis.audited?.usedKeys ?? [],
+      dynamicCallSites: 0,
+      cataloguesDir: 'locales',
+      layout: 'directory-per-locale',
+      readSource: checkoutReader(root),
+      charge: async () => {
+        throw new Error(
+          'This workspace has reached today’s translation ceiling of 5,000 strings.',
+        );
+      },
+      translate: async ({ strings }) => {
+        translated += 1;
+        return strings.map((s) => ({
+          key: s.key,
+          text: 'should never be produced',
+          confidence: 'confident',
+        }));
+      },
+    });
+
+    expect(translated).toBe(0);
+    expect(outcome.files).toEqual([]);
+    expect(outcome.charged).toBe(0);
+    expect(outcome.refusal).toMatch(/today’s translation ceiling/);
+
+    const onDiskAfter = LOCALES.map((locale) =>
+      readFileSync(join(root, 'locales', locale, 'common.json'), 'utf-8'),
+    );
+    expect(onDiskAfter).toEqual(onDiskBefore);
   });
 });
