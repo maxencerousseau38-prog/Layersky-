@@ -60,6 +60,52 @@ const STATE: Record<
 };
 
 const ITEMS: Array<{ name: string; state: State; note?: string }> = [
+  /*
+   * The guardrail, first, because the board said nothing about it at all.
+   *
+   * This section's own sentence is "The rest are named here rather than
+   * implied elsewhere", and the product's lead capability — a check on every
+   * pull request, and an automatic correction of the one case that is safe —
+   * appeared on no row. That is the same omission the comment lower down
+   * describes for placeholder-aware extraction, except pointing at something
+   * that *works*: a reader trusting this board to be complete would have left
+   * believing Layersky is a translation CLI.
+   *
+   * Each row below was checked against the GitHub check-run API on
+   * 2026-10-03, on pull requests #13 and #14 of the public i18next fixture,
+   * rather than against a note in a file.
+   */
+  {
+    name: 'i18n check on every pull request',
+    state: 'working',
+    note: 'A GitHub Check on the commit, answering only for the keys the pull request changed',
+  },
+  {
+    name: 'Automatic correction of missing translations',
+    state: 'working',
+    note: 'That case only. A placeholder mismatch, a broken ICU message or a stale key is reported and never rewritten',
+  },
+  {
+    name: 'Corrective pull request, then the check again',
+    state: 'working',
+    note: 'Opened against the same branch, so merging it re-runs the check that asked for it',
+  },
+  {
+    name: 'Health check history in the hosted app',
+    state: 'working',
+    note: 'Every check a workspace received, with the findings behind it',
+  },
+  {
+    /*
+     * `notStarted` rather than a missing row, because a reader evaluating
+     * this will ask, and the honest answer is that nobody has asked for it.
+     * A check that reddens a repository with required checks stops somebody
+     * else's work on the strength of an untested hypothesis.
+     */
+    name: 'Blocking a merge on a failed check',
+    state: 'notStarted',
+    note: 'The check is always neutral. It can block the day somebody wants it to',
+  },
   {
     name: 'Framework detection',
     state: 'working',
@@ -70,7 +116,11 @@ const ITEMS: Array<{ name: string; state: State; note?: string }> = [
     state: 'working',
     note: 'AST-based, not a regular expression',
   },
-  { name: 'Translation into any target language', state: 'working' },
+  {
+    name: 'Translation into any target language',
+    state: 'working',
+    note: 'The check reads i18next catalogues; next-intl and react-intl are detected and declared unsupported',
+  },
   {
     /*
      * "never overwrites your edits" was too broad, and the gap is a way to
@@ -118,9 +168,15 @@ const ITEMS: Array<{ name: string; state: State; note?: string }> = [
     note: 'npx @localize-infra/cli, against the hosted API with a personal token or one you run yourself',
   },
   {
+    /*
+     * "Private repositories are not self-serve yet" was true until the
+     * entitlement started being granted inside `link_github_installation`,
+     * and false afterwards. It was the last manual step between a stranger
+     * and a working installation, and the row outlived it.
+     */
     name: 'Hosted app: accounts, workspaces, projects, runs',
     state: 'working',
-    note: 'Early access, sign-up open. Private repositories are not self-serve yet',
+    note: 'Early access, sign-up open, public and private repositories both self-serve',
   },
   {
     name: 'Answering unresolved strings before the pull request',

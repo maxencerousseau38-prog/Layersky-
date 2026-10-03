@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
+import { PUBLIC_ROUTES } from '../src/lib/routes';
 
 /**
  * Zero axe violations is a merge gate, not a report (see the cross-cutting
@@ -8,15 +9,16 @@ import { expect, test } from '@playwright/test';
  * Both colour schemes are checked: the dark palette is a distinct scale, not an
  * inversion, so light passing tells us nothing about dark.
  */
-const ROUTES = [
-  '/',
-  '/docs',
-  '/benchmarks',
-  '/pricing',
-  '/quality',
-  '/security',
-  '/roadmap',
-];
+/*
+ * Read from `PUBLIC_ROUTES`, not copied beside it.
+ *
+ * That constant exists so a new page cannot be added to the navigation and
+ * quietly left out of the sitemap — and this list was the second place it
+ * could be left out of. /terms, /privacy and /contact were invisible to the
+ * accessibility gate on the day they shipped, which is precisely when a page
+ * nobody has looked at needs it.
+ */
+const ROUTES = PUBLIC_ROUTES.map((route) => route.path);
 
 for (const route of ROUTES) {
   for (const scheme of ['light', 'dark'] as const) {
@@ -104,7 +106,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');
     await page
-      .getByRole('button', { name: 'Run it on your repository' })
+      .getByRole('button', { name: 'Put it on your repository' })
       .click();
 
     const dialog = page.getByRole('dialog');

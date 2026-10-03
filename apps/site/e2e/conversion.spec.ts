@@ -23,7 +23,7 @@ test('the gate sits after the evidence, not at the top of the page', async ({
   page,
 }) => {
   await page.goto('/');
-  const cta = page.getByRole('button', { name: 'Run it on your repository' });
+  const cta = page.getByRole('button', { name: 'Put it on your repository' });
   await expect(cta).toBeVisible();
 
   const position = await cta.evaluate(
@@ -38,7 +38,7 @@ test('the gate sits after the evidence, not at the top of the page', async ({
 
 test('the dialog asks for nothing it cannot honour', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Run it on your repository' }).click();
+  await page.getByRole('button', { name: 'Put it on your repository' }).click();
 
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
@@ -48,14 +48,17 @@ test('the dialog asks for nothing it cannot honour', async ({ page }) => {
     dialog.locator('input[type="email"], input[type="password"], form'),
   ).toHaveCount(0);
 
-  // It names both paths that work today. This asserted "hosted accounts are
-  // not built yet" for as long as they were built.
-  await expect(dialog.getByText(/start from the command line/i)).toBeVisible();
-  await expect(dialog.getByText(/run it from the hosted app/i)).toBeVisible();
+  // It names both paths that work today, GitHub App first. This asserted
+  // "hosted accounts are not built yet" for as long as they were built, and
+  // then listed the CLI first for as long as the App was the product.
+  await expect(dialog.getByText(/install the github app/i)).toBeVisible();
+  await expect(
+    dialog.getByText(/extract and translate from the command line/i),
+  ).toBeVisible();
 
   // The hosted path is a link to the app's own origin, not a form here.
   await expect(
-    dialog.getByRole('link', { name: /open the hosted app/i }),
+    dialog.getByRole('link', { name: /connect your repository/i }),
   ).toHaveAttribute('href', APP_URL);
   await expect(
     dialog.getByRole('link', { name: /follow on github/i }),
@@ -74,7 +77,7 @@ test('the dialog quotes no price, because none is modelled', async ({
   page,
 }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Run it on your repository' }).click();
+  await page.getByRole('button', { name: 'Put it on your repository' }).click();
 
   const text = (await page.getByRole('dialog').textContent()) ?? '';
   // A currency figure here would be the first false claim on the site.
@@ -84,7 +87,7 @@ test('the dialog quotes no price, because none is modelled', async ({
 
 test('the dialog is dismissible and restores focus', async ({ page }) => {
   await page.goto('/');
-  const cta = page.getByRole('button', { name: 'Run it on your repository' });
+  const cta = page.getByRole('button', { name: 'Put it on your repository' });
   await cta.click();
   await expect(page.getByRole('dialog')).toBeVisible();
 

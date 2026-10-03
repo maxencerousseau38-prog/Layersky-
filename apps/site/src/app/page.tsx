@@ -9,7 +9,9 @@ import { Container, Section } from '@/components/landing/section';
 import {
   CLI_PERSONAL_TOKENS_LIVE,
   CLI_PUBLISHED_TO_NPM,
+  INSTALL_COMMAND,
 } from '@/lib/constants';
+import { CopyCommand } from '@localize-infra/ui';
 import Link from 'next/link';
 
 export default function HomePage() {
@@ -83,15 +85,17 @@ export default function HomePage() {
                 Your turn
               </span>
               <h2 className="mt-4 text-balance font-display text-display font-semibold text-inverse sm:text-display-lg">
-                Now point it at yours
+                Now put it on yours
               </h2>
-              {/* This said extraction "writes a file you own" before anything
-                  leaves the machine. The CLI writes nothing until a token is
-                  configured, and with one it goes straight on to translate —
-                  so the honest version is about what is sent, not when. */}
+              {/* This described the CLI — "extraction runs on your machine"
+                  — which is the path the page no longer leads with. The
+                  sentence that belongs under this heading is what the check
+                  costs a repository to try, and the answer is three steps and
+                  no merge it can block. */}
               <p className="mx-auto mt-5 max-w-[52ch] text-prose text-inverse/70">
-                Extraction runs on your machine. What leaves it is the strings
-                and the code around them, sent to the API you point it at.
+                A workspace, a GitHub connection, and the next pull request gets
+                a check. It is never a blocking one, so the worst it can do on
+                day one is tell you something you did not know.
               </p>
             </div>
 
@@ -131,23 +135,27 @@ export default function HomePage() {
                   variant="secondary"
                   className="w-full border-inverse/30 bg-transparent text-inverse hover:bg-inverse/10 active:bg-inverse/15 sm:w-auto"
                 >
-                  Run it on your repository
+                  Put it on your repository
                 </GatedAction>
               </div>
               <p className="mx-auto mt-5 max-w-[60ch] text-small text-inverse/60">
                 {/* "The CLI runs from a clone today" stood here for two weeks
                     after the package reached npm, because it was prose rather
                     than a read of the flag the hero and /docs already use. */}
+                {/* The CLI is still here, still true, and no longer the
+                    headline. It does a different job from the check — it
+                    finds hardcoded strings in source, which the check does
+                    not — so it is named rather than dropped. */}
                 {!CLI_PUBLISHED_TO_NPM
-                  ? 'The CLI runs from a clone today. Read '
+                  ? 'There is also a CLI, which runs from a clone today. Read '
                   : CLI_PERSONAL_TOKENS_LIVE
-                    ? 'The CLI is on npm and runs against our hosted API with a personal token. Read '
-                    : 'The CLI is on npm and translates through an API you run yourself. Read '}
+                    ? 'There is also a CLI for extracting hardcoded strings, on npm, running against our hosted API with a personal token. Read '
+                    : 'There is also a CLI for extracting hardcoded strings, on npm, translating through an API you run yourself. Read '}
                 <Link
-                  href="/docs#install"
+                  href="/docs"
                   className="rounded-sm text-inverse underline underline-offset-2 decoration-inverse/40 hover:decoration-inverse focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                 >
-                  the install guide
+                  the documentation
                 </Link>{' '}
                 or{' '}
                 <Link
@@ -158,6 +166,49 @@ export default function HomePage() {
                 </Link>
                 .
               </p>
+
+              {/*
+               * The terminal path, moved here from the hero.
+               *
+               * It was directly under the headline, which put a command for
+               * the *other* product in the first thing a visitor reads — and
+               * the hero now argues for a GitHub App that needs nothing
+               * installed. Deleting it outright was wrong for two reasons:
+               * the CLI works, and a developer landing page with nothing to
+               * copy has no affordance at all.
+               *
+               * So it sits after the evidence, under the close, which is also
+               * the honest ranking. DESIGN.md §4.5.3 demotes a secondary
+               * action rather than hiding it.
+               */}
+              <div className="mx-auto mt-8 w-full max-w-[34rem] rounded-lg border border-inverse/20 bg-inverse/5 p-4 text-start">
+                <p className="text-eyebrow font-medium uppercase text-inverse/60">
+                  From your terminal
+                </p>
+                <div className="mt-3 flex flex-col gap-3">
+                  <div className="w-full">
+                    <CopyCommand command={INSTALL_COMMAND} />
+                  </div>
+                  {/* Both halves of this sentence come from
+                      CLI_PUBLISHED_TO_NPM, which /docs also reads. It was
+                      prose in two places about one external fact, which is one
+                      place that gets forgotten. */}
+                  <p className="text-small leading-6 text-inverse/60">
+                    {!CLI_PUBLISHED_TO_NPM
+                      ? 'Not published to npm yet — today it runs from a clone. '
+                      : CLI_PERSONAL_TOKENS_LIVE
+                        ? 'It runs against our hosted API with a personal token from your workspace. '
+                        : 'It needs an API you run yourself — ours is not open to the CLI. '}
+                    <Link
+                      href="/docs#install"
+                      className="rounded-sm text-inverse underline underline-offset-2 decoration-inverse/40 hover:decoration-inverse focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                    >
+                      Install guide
+                    </Link>
+                    .
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </Container>

@@ -1,4 +1,3 @@
-import { PIPELINE_STAGES } from '@localize-infra/ui';
 import { expect, test } from '@playwright/test';
 
 /**
@@ -180,36 +179,43 @@ async function statePaintedWithin(
   );
 }
 
-const DIAGRAM = 'ol[aria-label="The five pipeline stages"]';
-const REAL_RUN = '[aria-label="Run progress"]';
+/*
+ * Both selectors moved when the landing page stopped selling the legacy
+ * pipeline. The rail of five stages is gone from this page — it still exists
+ * in the hosted app, where a run really has stages — and the two things worth
+ * checking here are now a table that must claim nothing and a check artifact
+ * that must claim exactly one thing.
+ */
+const FINDINGS_TABLE =
+  'table[aria-label="What the check finds and what it fixes"]';
+const REAL_CHECK =
+  '[aria-label="A check Layersky posted on a real pull request"]';
 
-test('the pipeline diagram claims no state, because nothing has run', async ({
+test('the findings table claims no state, because it describes behaviour', async ({
   page,
 }) => {
   await page.goto('/');
 
-  // Non-vacuous: if the rail ever stops rendering its stages, this test must
-  // fail loudly rather than pass by finding nothing to inspect.
-  await expect(page.locator(`${DIAGRAM} > li`)).toHaveCount(
-    PIPELINE_STAGES.length,
-  );
+  // Non-vacuous: four finding kinds, one row each. An empty table would make
+  // the assertion below pass by having nothing to inspect.
+  await expect(page.locator(`${FINDINGS_TABLE} tbody tr`)).toHaveCount(4);
 
   expect(
-    await statePaintedWithin(page, DIAGRAM),
-    'the "How it works" rail explains what the stages are; painting one of them with a state colour asserts a run that never happened',
+    await statePaintedWithin(page, FINDINGS_TABLE),
+    'the table explains which findings get corrected; painting "No" amber or crimson would report a degraded state where the answer is the behaviour being promised',
   ).toEqual([]);
 });
 
-test('the run artifact does claim state, because it really ran', async ({
+test('the check artifact does claim state, because a real check passed', async ({
   page,
 }) => {
   await page.goto('/');
 
-  const painted = await statePaintedWithin(page, REAL_RUN);
+  const painted = await statePaintedWithin(page, REAL_CHECK);
 
   expect(
     painted.filter((entry) => entry.startsWith('confident')).length,
-    'the hero rail depicts a run that completed all five stages; if it stops marking them, the test above has been satisfied by removing the colour rather than by fixing the diagram',
+    'the band shows a check that went from six problems to none; the green half is a state something really reached, and if it stops being painted the test above has been satisfied by removing colour rather than by keeping it honest',
   ).toBeGreaterThan(0);
 });
 

@@ -36,9 +36,26 @@ const STAGES: {
     status: 'shipped',
     label: 'Shipped',
     items: [
+      /*
+       * First, and it was missing entirely.
+       *
+       * This list opened with the evaluation harness and the CLI, which is
+       * the order the product shipped in and no longer the order it matters
+       * in. A reader scanning for what Layersky does would have found the
+       * i18n check nowhere on its own roadmap while it was running against a
+       * real repository every day.
+       */
+      {
+        title: 'i18n check on every pull request',
+        body: 'A GitHub App that reads the catalogues a pull request changed and posts a check on the commit — missing translations, dropped placeholders, invalid ICU, keys the source no longer has. It answers only for what the pull request changed, never for the repository’s backlog, and its conclusion is always neutral so it cannot block a merge.',
+      },
+      {
+        title: 'Automatic correction of missing translations',
+        body: 'The one finding with a single right answer is fixed in a pull request opened against your branch, so merging it re-runs the check that asked for it. The corrected file is re-audited before anything is committed, and a translation the model was not confident about is reported as a question instead of written. The other three findings are never rewritten.',
+      },
       {
         title: 'Quality evaluation harness',
-        body: 'A corpus of 414 real strings from five open-source projects, with deterministic placeholder, ICU and plural checks enforced on every build.',
+        body: 'A corpus of 414 real strings from five open-source projects, with deterministic placeholder, ICU and plural checks enforced on every build. The same placeholder and ICU code is what the pull request check runs.',
       },
       {
         title: 'CLI: extract, translate, open a pull request',
@@ -60,7 +77,7 @@ const STAGES: {
       },
       {
         title: 'Hosted app',
-        body: 'Accounts, workspaces with roles, projects, a GitHub connection per workspace, and runs started from the browser that end in a pull request. Early access: public repositories are self-serve, private ones are not yet.',
+        body: 'Accounts, workspaces with roles, projects, a GitHub connection per workspace, and runs started from the browser that end in a pull request. Early access: public and private repositories are both self-serve, and nothing is charged.',
       },
     ],
   },
@@ -78,6 +95,19 @@ const STAGES: {
     status: 'planned',
     label: 'Planned, not started',
     items: [
+      /*
+       * Named because the check's scope is the first question anybody using
+       * another library will ask, and a roadmap that is silent about it reads
+       * as "coming soon" to somebody who has not got as far as /docs.
+       */
+      {
+        title: 'next-intl and react-intl',
+        body: 'The pull request check reads i18next catalogues. The other two are detected and answered with “not supported” rather than silence — which is a better answer than nothing and is still not support. Neither is being built today.',
+      },
+      {
+        title: 'Blocking the check on failure',
+        body: 'The check is always neutral, so it cannot stop a merge. Making it capable of failing is a small change and will not be made on a guess: it stops somebody else’s work, so it waits until somebody asks for it.',
+      },
       {
         title: 'Placeholder-aware extraction',
         body: 'A sentence containing an expression — “You have {count} messages” — is currently extracted as separate fragments. Translating fragments independently breaks word order in German, Japanese and Arabic. It is first on this list, and no broader quality claim will be made until it is fixed.',

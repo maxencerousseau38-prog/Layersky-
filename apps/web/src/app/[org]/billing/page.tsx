@@ -84,8 +84,16 @@ export default async function BillingPage({
               ) : (
                 <>
                   <Badge tone="neutral">Not included</Badge>
+                  {/*
+                   * This said "Needs a paid plan", which stopped being true
+                   * when `link_github_installation` started granting the
+                   * entitlement in the same transaction as the link. It was
+                   * pointing a reader at a plan nobody can buy, on the page
+                   * that also says no plan is priced — the two halves of one
+                   * screen disagreeing.
+                   */}
                   <span className="text-small text-secondary">
-                    Needs a paid plan.
+                    Granted when this workspace connects GitHub.
                   </span>
                 </>
               )}

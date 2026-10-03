@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { EXAMPLE_PR_URL } from '../src/lib/constants';
+import { APP_URL } from '../src/lib/constants';
 
 /**
  * Interaction feedback: the press, the pointer it is meant for, and the chrome
@@ -100,28 +100,21 @@ async function hoverAndPressRules(
  * language rather than the step Button already defines.
  */
 /*
- * Which surfaces are pressable depends on whether a visitor can open the pull
- * request. While `EXAMPLE_PR_URL` is null the artifact's pull request row is
- * plain text, not a target, and the hero's filled action is the docs — the
- * first `/docs#install` link in document order, ahead of the inline "Install
- * guide" text link in the terminal panel.
+ * The two filled surfaces in the hero, and the copy command further down.
+ *
+ * This list used to branch on `EXAMPLE_PR_URL`, because the hero's filled
+ * action was either a pull request a visitor could open or, failing that, the
+ * docs. Both are stale. The filled action is now the hosted app, and the pull
+ * request beside it is real and public rather than conditional — the fixture
+ * the evidence comes from is no longer private.
  */
 const PRESSABLE: { name: string; selector: string }[] = [
   { name: 'copy command', selector: 'button[aria-label^="Copy command"]' },
-  ...(EXAMPLE_PR_URL
-    ? [
-        {
-          name: 'hero artifact pull request row',
-          selector: 'figure a[href*="/pull/"]',
-        },
-        { name: 'primary call to action', selector: 'main a[href*="/pull/"]' },
-      ]
-    : [
-        {
-          name: 'primary call to action',
-          selector: 'main a[href="/docs#install"]',
-        },
-      ]),
+  {
+    name: 'primary call to action',
+    selector: `main a[href="${APP_URL}"]`,
+  },
+  { name: 'hero evidence link', selector: 'main a[href*="/pull/"]' },
 ];
 
 /** Asserts a surface declares a pressed state that differs from, and beats, hover. */

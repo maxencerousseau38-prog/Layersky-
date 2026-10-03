@@ -34,6 +34,96 @@ export const GITHUB_REPO_URL =
 export const EXAMPLE_PR_URL: string | null = null;
 
 /**
+ * The i18next fixture, and the one cycle on it a visitor can open.
+ *
+ * **This repository is public**, which the Vite fixture above is not — and
+ * that difference is why the evidence on this site moved. `EXAMPLE_PR_URL`
+ * is null because the run it describes lives in a private repository and the
+ * page would have linked a 404 to everyone but its owner. The guardrail's
+ * evidence has no such problem: every number below is on a page anybody can
+ * load, signed out.
+ *
+ * Verified against the GitHub API on 2026-10-03, not copied from a note:
+ *
+ *   - pull request #13 added one English key and no translations;
+ *   - the check on `d73683d` was `neutral`, "6 i18n problems", "Checked 1 key
+ *     against 6 languages (ar, de, es, fr, ja, pt-BR)", 2026-09-29 13:33 UTC;
+ *   - corrective pull request #17 opened against that same branch and added
+ *     the six, merged 2026-10-02 16:49 UTC as `e910905`;
+ *   - the check on `e910905` is `success`, "No i18n problems found".
+ *
+ * Changing any figure here means re-reading the check runs. They are the whole
+ * argument of the landing page, and the one thing on it that is not a drawing.
+ */
+export const FIXTURE_REPO_URL =
+  'https://github.com/maxencerousseau38-prog/localize-infra-fixture-i18next';
+
+export const EXAMPLE_CYCLE = {
+  /** The pull request a reviewer opened. */
+  pull: { number: 13, url: `${FIXTURE_REPO_URL}/pull/13` },
+  /** The corrective pull request Layersky opened against its branch. */
+  correction: { number: 17, url: `${FIXTURE_REPO_URL}/pull/17` },
+  checkName: 'Layersky i18n',
+  locales: ['ar', 'de', 'es', 'fr', 'ja', 'pt-BR'],
+  before: {
+    sha: 'd73683d',
+    conclusion: 'neutral',
+    title: '6 i18n problems',
+    summary: 'Checked 1 key against 6 languages (ar, de, es, fr, ja, pt-BR).',
+  },
+  after: {
+    sha: 'e910905',
+    conclusion: 'success',
+    title: 'No i18n problems found',
+    summary: 'Checked 1 key against 6 languages (ar, de, es, fr, ja, pt-BR).',
+  },
+} as const;
+
+/**
+ * The one i18n library the check understands today.
+ *
+ * Named in a constant because four surfaces say it — the landing, /docs,
+ * /roadmap and the status board — and a product that supports one framework
+ * must not be described by four separately-written sentences. next-intl and
+ * react-intl are *detected* and answered with "not supported", which is a
+ * different and better answer than silence; that distinction is drawn where
+ * it matters rather than here.
+ */
+export const SUPPORTED_I18N_LIBRARY = 'i18next';
+
+/**
+ * The only contact channel this product actually has.
+ *
+ * Public GitHub issues, and that is the whole truth of it. No support address
+ * is published because none exists, and a page that printed one would be
+ * making the first promise this site breaks — the constraint everywhere else
+ * here is that a claim must be true today.
+ *
+ * The consequence is stated rather than hidden on /contact and /privacy: an
+ * issue is public, so it is the wrong place for anything confidential, and a
+ * data request that needs privacy has nowhere to go yet. That is a real gap
+ * before a first external team, not a stylistic one.
+ */
+export const CONTACT_URL = `${GITHUB_REPO_URL}/issues`;
+
+/**
+ * Who is behind this, in the only terms the repository can support.
+ *
+ * There is no company. There is an individual GitHub account, which owns the
+ * repository, the npm scope and the GitHub App, and that is what the legal
+ * pages say. Naming an entity that does not exist would be the one kind of
+ * invention a terms page cannot survive.
+ */
+export const OPERATOR = 'Layersky, operated by maxencerousseau38-prog';
+
+/**
+ * The date the legal pages were last written, shown on them.
+ *
+ * A terms page with no date is a terms page nobody can tell is stale.
+ */
+export const LEGAL_LAST_UPDATED = '3 October 2026';
+
+/**
  * The hosted application.
  *
  * It exists — accounts, workspaces, projects, GitHub connection, runs — and
