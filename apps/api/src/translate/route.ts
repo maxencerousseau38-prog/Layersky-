@@ -8,7 +8,7 @@ import {
   pickProvider,
 } from '../router/index.js';
 import type { Provider } from '../router/types.js';
-import { handleTranslateBatch } from './handler.js';
+import { handleTranslateBatch, usageOfFailedBatch } from './handler.js';
 
 /**
  * Partial on purpose: a deployment holds keys for the providers it holds keys
@@ -70,6 +70,13 @@ export async function translateRouteHandler(
       body: {
         error:
           'The translation provider failed for this request. Try again; if it keeps failing, the operator has the details.',
+        /*
+         * The one thing from the error that must reach the caller. A batch
+         * where every chunk failed paid for up to three attempts per chunk and
+         * has nothing to show for them; without this the most expensive
+         * outcome would be the only one that records no cost at all.
+         */
+        usage: usageOfFailedBatch(err),
       },
     };
   }

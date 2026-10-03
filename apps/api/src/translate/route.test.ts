@@ -9,8 +9,15 @@ function fakeProvider(
   name: 'anthropic' | 'openai',
   responseText: string,
 ): Provider {
-  return { name, translate: vi.fn(async () => responseText) };
+  return { name, translate: vi.fn(async () => reply(responseText)) };
 }
+
+/**
+ * A provider reply carrying no usage. These tests measure behaviour, and a
+ * provider that reports nothing is a real case: `usage` is nullable precisely
+ * so "reported nothing" and "used nothing" stay distinguishable.
+ */
+const reply = (text: string) => ({ text, usage: null });
 
 const providers = {
   anthropic: fakeProvider('anthropic', '[{"key":"a","text":"Willkommen"}]'),
@@ -49,6 +56,15 @@ describe('translateRouteHandler', () => {
       // key out" from "every attempt at that chunk came back unparseable", and
       // a clean batch says so explicitly.
       failures: [],
+      // Defaulted by the schema, because the fake provider reports nothing.
+      // A real one reports per call, and this is the field a workspace's cost
+      // is recorded from.
+      usage: {
+        requests: 1,
+        inputTokens: 0,
+        outputTokens: 0,
+        thinkingTokens: 0,
+      },
     });
   });
 

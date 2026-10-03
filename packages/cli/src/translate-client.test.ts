@@ -54,8 +54,17 @@ describe('translateBatch', () => {
       missingKeys: [],
       // The API response above carries no `failures` field at all. It arrives
       // defaulted, which is the compatibility contract: a server that predates
-      // the field and a client that knows about it still agree.
+      // the field and a client that knows about it still agree. `usage` is the
+      // same contract one field later — and it matters more here than
+      // anywhere, because a self-hosted `apps/api` is pinned by whoever
+      // installed it, not by this repository.
       failures: [],
+      usage: {
+        requests: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        thinkingTokens: 0,
+      },
     });
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:8787/v1/translate',

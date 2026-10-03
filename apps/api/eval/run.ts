@@ -12,11 +12,12 @@ import {
   loadGlossary,
   placeholdersIntact,
 } from '../../../packages/eval/src/index.js';
+import { createAnthropicProvider } from '../src/router/anthropic.js';
 import {
-  type AnthropicUsage,
-  createAnthropicProvider,
-} from '../src/router/anthropic.js';
-import { handleTranslateBatch } from '../src/translate/handler.js';
+  type UsageTotals,
+  handleTranslateBatch,
+  usageOfFailedBatch,
+} from '../src/translate/handler.js';
 import { CONFIGS, type EvalConfig } from './configs.js';
 
 /**
@@ -79,11 +80,36 @@ async function runConfig(
   glossary: GlossaryEntry[],
   apiKey: string,
 ) {
-  const usage: AnthropicUsage[] = [];
-  const provider = createAnthropicProvider(apiKey, {
-    ...config.settings,
-    onUsage: (u) => usage.push(u),
-  });
+  /*
+   * Summed off what `handleTranslateBatch` returns, not off a callback on the
+   * provider.
+   *
+   * The provider used to report usage through an `onUsage` hook wired at
+   * construction, which worked here and reached nothing in production: cost
+   * has to be attributed to a *request*, and the provider is built once at
+   * startup. Reading it from the return value is the same number for this
+   * harness and the only shape the webhook can use — so the benchmark now
+   * measures the path production measures itself with.
+   *
+   * It is also strictly more complete: `requests` counts retried attempts,
+   * which the hook also saw but `usage.length` then conflated with calls.
+   */
+  let totals: UsageTotals = {
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    thinkingTokens: 0,
+  };
+  const add = (u: UsageTotals | null) => {
+    if (!u) return;
+    totals = {
+      requests: totals.requests + u.requests,
+      inputTokens: totals.inputTokens + u.inputTokens,
+      outputTokens: totals.outputTokens + u.outputTokens,
+      thinkingTokens: totals.thinkingTokens + u.thinkingTokens,
+    };
+  };
+  const provider = createAnthropicProvider(apiKey, config.settings);
 
   const scored: Scored[] = [];
   const localeLatency: Record<string, number> = {};
@@ -104,9 +130,12 @@ async function runConfig(
       );
       translations = result.translations as typeof translations;
       missingKeys = result.missingKeys;
+      add(result.usage);
     } catch (error) {
       // A locale that fails entirely is a real outcome, not a reason to abort
-      // the benchmark. Every one of its keys counts as missing.
+      // the benchmark. Every one of its keys counts as missing — and it still
+      // cost whatever its attempts cost, which rides on the error.
+      add(usageOfFailedBatch(error));
       missingKeys = entries.map((e) => e.id);
       errors.push(
         `${locale}: ${error instanceof Error ? error.message : String(error)}`,
@@ -154,15 +183,6 @@ async function runConfig(
     }
   }
 
-  const totals = usage.reduce(
-    (acc, u) => ({
-      inputTokens: acc.inputTokens + u.inputTokens,
-      outputTokens: acc.outputTokens + u.outputTokens,
-      thinkingTokens: acc.thinkingTokens + u.thinkingTokens,
-    }),
-    { inputTokens: 0, outputTokens: 0, thinkingTokens: 0 },
-  );
-
   const cost =
     (totals.inputTokens / 1_000_000) * config.rate.input +
     (totals.outputTokens / 1_000_000) * config.rate.output;
@@ -170,9 +190,13 @@ async function runConfig(
   return {
     config,
     scored,
-    usage: totals,
+    usage: {
+      inputTokens: totals.inputTokens,
+      outputTokens: totals.outputTokens,
+      thinkingTokens: totals.thinkingTokens,
+    },
     cost,
-    requests: usage.length,
+    requests: totals.requests,
     requestedTotal,
     missingTotal,
     localeLatency,

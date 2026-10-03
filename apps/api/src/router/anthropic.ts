@@ -1,4 +1,9 @@
-import type { Provider, TranslateRequest } from './types.js';
+import type {
+  Provider,
+  TokenUsage,
+  TranslateRequest,
+  TranslateResult,
+} from './types.js';
 
 /**
  * Usage, as the API reports it.
@@ -32,8 +37,6 @@ export interface AnthropicSettings {
   effort?: 'low' | 'medium' | 'high' | null;
   /** `'disabled'` turns thinking off; `null` omits the field. */
   thinking?: 'disabled' | null;
-  /** Called with the usage of every response, for measurement. */
-  onUsage?: (usage: AnthropicUsage) => void;
 }
 
 export function createAnthropicProvider(
@@ -80,12 +83,14 @@ export function createAnthropicProvider(
      */
     effort = 'low',
     thinking = null,
-    onUsage,
   } = settings;
 
   return {
     name: 'anthropic',
-    async translate(req: TranslateRequest, modelId: string): Promise<string> {
+    async translate(
+      req: TranslateRequest,
+      modelId: string,
+    ): Promise<TranslateResult> {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -118,20 +123,29 @@ export function createAnthropicProvider(
         };
       };
 
-      // Reported before the content check, so a response that spent its whole
-      // budget thinking and returned no text still gets counted. That failure
-      // costs a full request and would otherwise be invisible in the totals.
-      onUsage?.({
+      /*
+       * Read before the content check, and attached to the error when there is
+       * no text.
+       *
+       * A response that spent its whole budget thinking and returned nothing
+       * still cost a full request. Reporting usage only on success would make
+       * exactly the most expensive failure invisible in the totals — and that
+       * failure is the one a cost model most needs to see.
+       */
+      const usage: TokenUsage = {
         inputTokens: body.usage?.input_tokens ?? 0,
         outputTokens: body.usage?.output_tokens ?? 0,
         thinkingTokens: body.usage?.output_tokens_details?.thinking_tokens ?? 0,
-      });
+      };
 
       const textBlock = body.content.find((block) => block.type === 'text');
       if (!textBlock || !textBlock.text.trim()) {
-        throw new Error('Anthropic response had no usable text content block');
+        throw Object.assign(
+          new Error('Anthropic response had no usable text content block'),
+          { usage },
+        );
       }
-      return textBlock.text.trim();
+      return { text: textBlock.text.trim(), usage };
     },
   };
 }

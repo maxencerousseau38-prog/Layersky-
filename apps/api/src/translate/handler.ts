@@ -5,9 +5,58 @@ import type {
   TranslateBatchResponse,
   TranslatedString,
 } from '@localize-infra/schemas';
-import type { Provider } from '../router/types.js';
+import type { Provider, TokenUsage } from '../router/types.js';
 import { parseTranslationResponse } from './parse-response.js';
 import { buildBatchPrompt } from './prompt.js';
+
+/** Zero-valued accumulator. A sum of nothing is zero requests, not null. */
+export interface UsageTotals extends TokenUsage {
+  requests: number;
+}
+
+const NO_USAGE: UsageTotals = {
+  requests: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  thinkingTokens: 0,
+};
+
+/**
+ * Add one call's usage to a running total.
+ *
+ * `requests` increments whatever the provider reported, including when it
+ * reported nothing: a call that reached a provider was paid for, and a
+ * provider that does not report tokens must not make its calls free. The token
+ * figures then understate rather than the request count being wrong, and the
+ * two disagreeing is the signal that a provider is not instrumented.
+ */
+function addUsage(total: UsageTotals, usage: TokenUsage | null): UsageTotals {
+  return {
+    requests: total.requests + 1,
+    inputTokens: total.inputTokens + (usage?.inputTokens ?? 0),
+    outputTokens: total.outputTokens + (usage?.outputTokens ?? 0),
+    thinkingTokens: total.thinkingTokens + (usage?.thinkingTokens ?? 0),
+  };
+}
+
+/** The usage a thrown provider error carried, when it carried any. */
+function usageOfError(error: unknown): TokenUsage | null {
+  const carried = (error as { usage?: TokenUsage } | null)?.usage;
+  return carried && typeof carried.inputTokens === 'number' ? carried : null;
+}
+
+/**
+ * The totals a failed batch carried.
+ *
+ * A batch where every chunk failed is the most expensive outcome this code
+ * has — up to three paid attempts per chunk, nothing to show for them — and it
+ * is the one the route answers with a 502. Reading the totals off the error is
+ * what keeps the worst case from being the one that records nothing.
+ */
+export function usageOfFailedBatch(error: unknown): UsageTotals | null {
+  const carried = (error as { usage?: UsageTotals } | null)?.usage;
+  return carried && typeof carried.requests === 'number' ? carried : null;
+}
 
 /**
  * How many strings go in one request.
@@ -102,22 +151,36 @@ async function translateChunk(
   provider: Provider,
   modelId: string,
   options: Required<Pick<TranslateOptions, 'maxAttempts' | 'sleep' | 'random'>>,
-): Promise<{ translations: TranslatedString[]; failure: ChunkFailure | null }> {
+): Promise<{
+  translations: TranslatedString[];
+  failure: ChunkFailure | null;
+  usage: UsageTotals;
+}> {
   const requested = new Set(strings.map((s) => s.key));
   const accepted = new Map<string, TranslatedString>();
   let lastError: Error | null = null;
+  let usage: UsageTotals = NO_USAGE;
 
   for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
     const pending = strings.filter((s) => !accepted.has(s.key));
     if (pending.length === 0) break;
 
     let threw = false;
+    /*
+     * Per attempt, because a parse failure throws *after* the call succeeded
+     * and its usage was already added. Without this the catch below would
+     * count the same call twice — and a cost figure that double-counts the
+     * failures is worse than one that misses them, because it looks careful.
+     */
+    let counted = false;
     try {
-      const raw = await provider.translate(
+      const answer = await provider.translate(
         buildBatchPrompt({ ...request, strings: pending }),
         modelId,
       );
-      for (const translation of parseTranslationResponse(raw)) {
+      usage = addUsage(usage, answer.usage);
+      counted = true;
+      for (const translation of parseTranslationResponse(answer.text)) {
         if (!requested.has(translation.key)) continue;
         if (accepted.has(translation.key)) continue;
         accepted.set(translation.key, translation);
@@ -125,6 +188,16 @@ async function translateChunk(
       lastError = null;
     } catch (error) {
       threw = true;
+      /*
+       * A failed attempt still cost a call, and sometimes a whole budget of
+       * output tokens — a response that thinks its way to no text is the most
+       * expensive failure there is. Counting only successes would hide exactly
+       * the calls a cost model needs to see.
+       *
+       * A parse failure is counted by the success path above, which has
+       * already added the usage before `parseTranslationResponse` threw.
+       */
+      if (!counted) usage = addUsage(usage, usageOfError(error));
       lastError = error instanceof Error ? error : new Error(String(error));
     }
 
@@ -157,7 +230,7 @@ async function translateChunk(
       }
     : null;
 
-  return { translations, failure };
+  return { translations, failure, usage };
 }
 
 /**
@@ -194,6 +267,7 @@ export async function handleTranslateBatch(
   const translations: TranslatedString[] = [];
   const failures: ChunkFailure[] = [];
   let lastError: string | null = null;
+  let usage: UsageTotals = NO_USAGE;
 
   for (const strings of chunk(request.strings, MAX_STRINGS_PER_REQUEST)) {
     const result = await translateChunk(
@@ -204,6 +278,14 @@ export async function handleTranslateBatch(
       resolved,
     );
     translations.push(...result.translations);
+    // Summed across chunks *and* across the retries inside each one, so the
+    // total is what the provider was actually asked to do.
+    usage = {
+      requests: usage.requests + result.usage.requests,
+      inputTokens: usage.inputTokens + result.usage.inputTokens,
+      outputTokens: usage.outputTokens + result.usage.outputTokens,
+      thinkingTokens: usage.thinkingTokens + result.usage.thinkingTokens,
+    };
     if (result.failure) {
       failures.push(result.failure);
       lastError = result.failure.error;
@@ -211,7 +293,12 @@ export async function handleTranslateBatch(
   }
 
   if (lastError !== null && translations.length === 0) {
-    throw new Error(lastError);
+    /*
+     * The usage rides on the error. A batch where every chunk failed still
+     * spent real calls, and the route turns this into a 502 — so without this
+     * the single most expensive outcome would record nothing at all.
+     */
+    throw Object.assign(new Error(lastError), { usage });
   }
 
   const foundKeys = new Set(translations.map((t) => t.key));
@@ -219,5 +306,5 @@ export async function handleTranslateBatch(
     .filter((s) => !foundKeys.has(s.key))
     .map((s) => s.key);
 
-  return { translations, missingKeys, failures };
+  return { translations, missingKeys, failures, usage };
 }

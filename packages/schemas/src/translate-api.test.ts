@@ -85,6 +85,13 @@ describe('TranslateBatchRequestSchema', () => {
 });
 
 describe('TranslatedStringSchema and TranslateBatchResponseSchema', () => {
+  const NO_USAGE = {
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    thinkingTokens: 0,
+  };
+
   it('allows an empty translations array alongside missingKeys', () => {
     const response = { translations: [], missingKeys: ['a', 'b'] };
     // `failures` is defaulted rather than required, so a client written against
@@ -93,6 +100,7 @@ describe('TranslatedStringSchema and TranslateBatchResponseSchema', () => {
     expect(TranslateBatchResponseSchema.parse(response)).toEqual({
       ...response,
       failures: [],
+      usage: NO_USAGE,
     });
   });
 
@@ -114,7 +122,39 @@ describe('TranslatedStringSchema and TranslateBatchResponseSchema', () => {
         },
       ],
     };
-    expect(TranslateBatchResponseSchema.parse(response)).toEqual(response);
+    expect(TranslateBatchResponseSchema.parse(response)).toEqual({
+      ...response,
+      usage: NO_USAGE,
+    });
+  });
+
+  /*
+   * Defaulted for the same reason `failures` is: `apps/api` is the one project
+   * in this repository that is not wired to Git and is deployed by hand, so a
+   * caller built against the newer shape genuinely does meet an older
+   * deployment. It parses, and reports no calls rather than refusing.
+   */
+  it('defaults the usage tally for a response written before it existed', () => {
+    const parsed = TranslateBatchResponseSchema.parse({
+      translations: [],
+      missingKeys: [],
+    });
+    expect(parsed.usage).toEqual(NO_USAGE);
+  });
+
+  it('carries the tally when the route reports one', () => {
+    const usage = {
+      requests: 2,
+      inputTokens: 622,
+      outputTokens: 244,
+      thinkingTokens: 80,
+    };
+    const parsed = TranslateBatchResponseSchema.parse({
+      translations: [],
+      missingKeys: [],
+      usage,
+    });
+    expect(parsed.usage).toEqual(usage);
   });
 
   it('refuses a failure record that claims zero attempts', () => {

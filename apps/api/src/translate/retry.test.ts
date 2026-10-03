@@ -25,6 +25,13 @@ function fakeClock() {
   };
 }
 
+/**
+ * A provider reply carrying no usage. These tests measure behaviour, and a
+ * provider that reports nothing is a real case: `usage` is nullable precisely
+ * so "reported nothing" and "used nothing" stay distinguishable.
+ */
+const reply = (text: string) => ({ text, usage: null });
+
 function request(n: number): TranslateBatchRequest {
   return {
     targetLocale: 'de',
@@ -64,7 +71,9 @@ function scripted(script: (Error | string)[]): {
         const step = script[Math.min(call, script.length - 1)];
         call += 1;
         if (step instanceof Error) throw step;
-        return step === ALL ? answerAll(req.userPrompt) : (step as string);
+        return reply(
+          step === ALL ? answerAll(req.userPrompt) : (step as string),
+        );
       }),
     },
   };
@@ -245,7 +254,7 @@ describe('clear failure states', () => {
       name: 'anthropic',
       translate: vi.fn(async (req) => {
         call += 1;
-        if (call === 1) return answerAll(req.userPrompt);
+        if (call === 1) return reply(answerAll(req.userPrompt));
         throw new Error('Unterminated string in JSON at position 2453');
       }),
     };

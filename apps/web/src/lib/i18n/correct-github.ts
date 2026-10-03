@@ -1,5 +1,5 @@
 import 'server-only';
-import type { CorrectionFile } from '@/lib/i18n/correct-run';
+import type { CorrectionFile, ModelUsage } from '@/lib/i18n/correct-run';
 
 /**
  * The two outside edges of the correction: the translation API, and the pull
@@ -40,6 +40,37 @@ import type { CorrectionFile } from '@/lib/i18n/correct-run';
  * is doing exactly what invariant 4 asks of it; forwarding the sentence is what
  * turns that into something a reviewer can act on instead of an absence.
  */
+/**
+ * The tally the route reported, or null.
+ *
+ * Null rather than zero whenever the shape is not what is expected. An older
+ * deployment of `apps/api` answers without this field at all, and reading that
+ * as "no tokens" would quietly report a real cost as free — which is worse
+ * than reporting nothing, because nothing is visibly missing.
+ */
+function readUsage(value: unknown): ModelUsage | null {
+  if (!value || typeof value !== 'object') return null;
+  const u = value as Record<string, unknown>;
+  const n = (k: string) => (typeof u[k] === 'number' ? (u[k] as number) : null);
+  const requests = n('requests');
+  if (requests === null) return null;
+  return {
+    requests,
+    inputTokens: n('inputTokens') ?? 0,
+    outputTokens: n('outputTokens') ?? 0,
+    thinkingTokens: n('thinkingTokens') ?? 0,
+  };
+}
+
+/** The same, out of an error body that has already been read as text. */
+function usageIn(text: string): ModelUsage | null {
+  try {
+    return readUsage((JSON.parse(text) as { usage?: unknown }).usage);
+  } catch {
+    return null;
+  }
+}
+
 export function translateBatch(config: { apiUrl: string; apiToken: string }) {
   return async (args: {
     targetLocale: string;
@@ -74,8 +105,20 @@ export function translateBatch(config: { apiUrl: string; apiToken: string }) {
     if (!response.ok) {
       // Verbatim, truncated (DESIGN.md §8). The API already strips provider
       // errors before returning, so what arrives here is safe to repeat.
-      const detail = (await response.text()).slice(0, 300);
-      throw new Error(`${response.status} ${response.statusText}: ${detail}`);
+      const raw = await response.text();
+      const detail = raw.slice(0, 300);
+      throw Object.assign(
+        new Error(`${response.status} ${response.statusText}: ${detail}`),
+        /*
+         * The cost rides on the error. A 502 means every chunk failed after up
+         * to three paid attempts each; the route reports what that came to and
+         * dropping it here would make the most expensive outcome the one
+         * recorded as free. Parsed from the whole body rather than the
+         * truncated message: the tally sits at the end of the JSON, and 300
+         * characters would cut it off.
+         */
+        { usage: usageIn(raw) },
+      );
     }
 
     const body = (await response.json()) as {
@@ -87,6 +130,7 @@ export function translateBatch(config: { apiUrl: string; apiToken: string }) {
       }[];
       missingKeys?: string[];
       failures?: { keys?: string[]; attempts?: number; error?: string }[];
+      usage?: unknown;
     };
 
     return {
@@ -109,6 +153,7 @@ export function translateBatch(config: { apiUrl: string; apiToken: string }) {
         // before returning, so what arrives here is safe to repeat.
         error: (f.error ?? 'no error given').slice(0, 300),
       })),
+      usage: readUsage(body.usage),
     };
   };
 }

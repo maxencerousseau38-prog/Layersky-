@@ -23,8 +23,18 @@ const request: TranslateBatchRequest = {
   ],
 };
 
+/**
+ * A provider reply carrying no usage. These tests measure behaviour, and a
+ * provider that reports nothing is a real case: `usage` is nullable precisely
+ * so "reported nothing" and "used nothing" stay distinguishable.
+ */
+const reply = (text: string) => ({ text, usage: null });
+
 function fakeProvider(responseText: string): Provider {
-  return { name: 'anthropic', translate: vi.fn(async () => responseText) };
+  return {
+    name: 'anthropic',
+    translate: vi.fn(async () => reply(responseText)),
+  };
 }
 
 describe('handleTranslateBatch', () => {
@@ -101,7 +111,7 @@ function countingProvider(perCall: (strings: string[]) => string): {
         const items = JSON.parse(req.userPrompt) as { key: string }[];
         const keys = items.map((i) => i.key);
         calls.push(keys);
-        return perCall(keys);
+        return reply(perCall(keys));
       }),
     },
   };
@@ -175,7 +185,7 @@ describe('handleTranslateBatch, over more strings than one request can answer', 
         const items = JSON.parse(req.userPrompt) as { key: string }[];
         call += 1;
         if (call === 2) throw new Error('provider exploded');
-        return answerAll(items.map((i) => i.key));
+        return reply(answerAll(items.map((i) => i.key)));
       }),
     };
 
@@ -222,7 +232,7 @@ describe('handleTranslateBatch, over more strings than one request can answer', 
         const items = JSON.parse(req.userPrompt) as { key: string }[];
         call += 1;
         if (call > 1) throw new Error('rate limited');
-        return answerAll(items.map((i) => i.key));
+        return reply(answerAll(items.map((i) => i.key)));
       }),
     };
 
