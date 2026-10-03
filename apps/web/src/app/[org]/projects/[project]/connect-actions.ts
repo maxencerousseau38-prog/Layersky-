@@ -118,9 +118,18 @@ export async function connectRepository(
   if (repository.private) {
     const allowed = await mayUsePrivateRepositories(organization.id);
     if (!allowed) {
+      /*
+       * This no longer means "buy a plan", and saying so would be false.
+       *
+       * Connecting a GitHub App installation grants the entitlement
+       * (`20261003000100`), so a workspace reaching this has no installation
+       * linked — or had a self-serve grant revoked when one was removed. The
+       * remedy is a connection, not a purchase, and the old sentence sent
+       * people to a checkout that does not exist.
+       */
       return {
         error:
-          'Private repositories need a paid plan. Public repositories are free and unlimited. Paid plans are not priced yet, so this cannot be upgraded today.',
+          'Private repositories are covered once this workspace has connected a GitHub App installation, and this one has not. Connect GitHub and try again — nothing here is behind a paid plan today.',
       };
     }
   }

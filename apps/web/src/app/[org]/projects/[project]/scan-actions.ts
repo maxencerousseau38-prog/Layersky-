@@ -96,7 +96,12 @@ export async function scanProject(
     repository.private &&
     !(await mayUsePrivateRepositories(organization.id))
   ) {
-    return { error: 'This plan does not cover private repositories.' };
+    // Not a plan. See `connect-actions.ts`: the entitlement follows the
+    // GitHub installation, so the remedy is connecting one.
+    return {
+      error:
+        'Private repositories are covered once this workspace has connected a GitHub App installation. Connect GitHub and try again.',
+    };
   }
 
   let workdir: string | null = null;

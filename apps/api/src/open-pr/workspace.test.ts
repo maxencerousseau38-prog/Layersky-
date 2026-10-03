@@ -145,11 +145,22 @@ describe('open-pr for a workspace token', () => {
     expect(o.openPr).not.toHaveBeenCalled();
   });
 
+  /*
+   * Still 403, and the sentence changed on purpose.
+   *
+   * It read "limited to public repositories", which describes a plan ceiling.
+   * Since `20261003000100` the entitlement follows the GitHub App
+   * installation — connecting one grants it — so a caller reaching this has
+   * none linked, and the remedy is a connection rather than a purchase. The
+   * refusal itself is unchanged: this is still the last gate before a private
+   * repository is written to.
+   */
   it('refuses a private repository without the entitlement', async () => {
     const o = ops({ ok: true, private: true, defaultBranch: 'main' });
     const result = await openPrRouteHandler(body, env, o, workspace());
     expect(result.status).toBe(403);
-    expect(errorOf(result)).toMatch(/limited to public repositories/);
+    expect(errorOf(result)).toMatch(/no GitHub App installation connected/);
+    expect(errorOf(result)).not.toMatch(/plan/i);
     expect(o.openPr).not.toHaveBeenCalled();
   });
 

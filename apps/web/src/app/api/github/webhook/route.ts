@@ -8,8 +8,13 @@ import {
   publishCheck,
 } from '@/lib/github/checks';
 import { readGitHubApp } from '@/lib/github/config';
+import { forgetInstallation } from '@/lib/github/forget-installation';
 import { materialiseRepository } from '@/lib/github/materialise';
-import { decideWebhook, verifySignature } from '@/lib/github/webhook';
+import {
+  decideInstallationEvent,
+  decideWebhook,
+  verifySignature,
+} from '@/lib/github/webhook';
 import { analysePullRequest, discardCheckout } from '@/lib/i18n/analyse';
 import { readBaseCatalogues } from '@/lib/i18n/base-catalogue';
 import { correctableDirectory } from '@/lib/i18n/correct';
@@ -148,6 +153,30 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(
       { ok: false, reason: 'body is not JSON' },
       { status: 400 },
+    );
+  }
+
+  /*
+   * An uninstall, before anything else.
+   *
+   * Cheap — one RPC, no GitHub call — and it must not be behind the pull
+   * request path, because the two events share nothing: there is no pull
+   * request, no repository and no head commit in an `installation` delivery.
+   *
+   * It is answered inline rather than in `after`, because it finishes in
+   * milliseconds and the response is the only place a failure could be seen.
+   */
+  const uninstall = decideInstallationEvent(
+    request.headers.get('x-github-event'),
+    payload,
+  );
+  if (uninstall.forget) {
+    const removed = await forgetInstallation(uninstall.installationId);
+    return ok(
+      removed > 0
+        ? 'installation removed'
+        : 'installation was not connected here',
+      { installationId: uninstall.installationId, removed },
     );
   }
 

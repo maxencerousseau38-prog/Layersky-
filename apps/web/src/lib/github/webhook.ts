@@ -175,6 +175,74 @@ export function decideWebhook(
 }
 
 /**
+ * Whether a delivery says the App is gone from an account.
+ *
+ * Separate from `decideWebhook` rather than another branch inside it, because
+ * the two answer different questions and return different things: that one
+ * decides whether to analyse a pull request, this one decides whether to
+ * forget an installation. Folding them together would give one function two
+ * result shapes and one caller a discriminated union to unpick.
+ *
+ * ## Why this exists at all
+ *
+ * Nothing told this product an installation had been removed. An owner could
+ * uninstall on github.com and the row here survived: `/[org]/start` kept
+ * saying GitHub was connected, and the discovery came from a run that failed
+ * *after* paying for every locale. The Verify button was added to work around
+ * exactly that, and a button somebody has to press is not the same as knowing.
+ *
+ * Now it matters more, because connecting also grants the private-repository
+ * entitlement. An installation that is gone must not leave a capability behind
+ * it.
+ *
+ * ## Deleted, and also revoked
+ *
+ * `installation.deleted` is the uninstall. `installation.suspend` is GitHub
+ * holding the installation without removing it — the tokens stop working and
+ * the owner can unsuspend — so it is **not** treated as a removal: forgetting
+ * the link would make the reconnection a fresh setup rather than a resumption.
+ * `revoked` is the OAuth grant, not the installation, and is ignored for the
+ * same reason.
+ */
+export type InstallationDecision =
+  | { forget: false; reason: string }
+  | { forget: true; installationId: number };
+
+export function decideInstallationEvent(
+  eventName: string | null,
+  payload: unknown,
+): InstallationDecision {
+  if (eventName !== 'installation') {
+    return {
+      forget: false,
+      reason: `not an installation event: ${eventName ?? 'none'}`,
+    };
+  }
+  if (typeof payload !== 'object' || payload === null) {
+    return { forget: false, reason: 'payload is not an object' };
+  }
+
+  const event = payload as {
+    action?: unknown;
+    installation?: { id?: unknown };
+  };
+  const action = str(event.action);
+  if (action !== 'deleted') {
+    return {
+      forget: false,
+      reason: `ignored installation action: ${action ?? 'none'}`,
+    };
+  }
+
+  const installationId = num(event.installation?.id);
+  if (!installationId) {
+    return { forget: false, reason: 'the delivery names no installation' };
+  }
+
+  return { forget: true, installationId };
+}
+
+/**
  * Which changed files are worth scanning for translation keys.
  *
  * Source files only, and never a locale catalogue: a catalogue is what the scan

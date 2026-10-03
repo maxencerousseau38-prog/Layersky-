@@ -152,9 +152,11 @@ export async function startRun(
       repository?.private &&
       !(await mayUsePrivateRepositories(organization.id))
     ) {
+      // Not a plan. See `connect-actions.ts`: the entitlement follows the
+      // GitHub installation, so the remedy is connecting one.
       return {
         error:
-          'This project points at a private repository, which needs a paid plan. Public repositories are free and unlimited.',
+          'This project points at a private repository, and this workspace has no GitHub App installation connected. Connect GitHub and run it again.',
       };
     }
 
