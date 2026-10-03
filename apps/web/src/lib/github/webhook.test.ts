@@ -1,6 +1,11 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { analysableFiles, decideWebhook, verifySignature } from './webhook';
+import {
+  analysableFiles,
+  decideInstallationEvent,
+  decideWebhook,
+  verifySignature,
+} from './webhook';
 
 const SECRET = 'a-webhook-secret';
 const sign = (body: string, secret = SECRET) =>
@@ -215,5 +220,60 @@ describe('analysableFiles', () => {
     expect(
       analysableFiles(['dist/a.js', 'node_modules/x/b.ts', '.next/c.js']),
     ).toEqual([]);
+  });
+});
+
+/**
+ * Learning that an installation is gone.
+ *
+ * Nothing told this product about an uninstall: the row survived, the setup
+ * page kept saying GitHub was connected, and a run discovered it *after*
+ * paying for every locale. It matters more now that connecting also grants the
+ * private-repository entitlement — a capability must not outlive its grounds.
+ */
+describe('decideInstallationEvent', () => {
+  const deleted = (over: Record<string, unknown> = {}) => ({
+    action: 'deleted',
+    installation: { id: 42 },
+    ...over,
+  });
+
+  it('forgets an installation GitHub says was deleted', () => {
+    expect(decideInstallationEvent('installation', deleted())).toEqual({
+      forget: true,
+      installationId: 42,
+    });
+  });
+
+  /*
+   * Suspension is GitHub holding the installation, not removing it: the owner
+   * can unsuspend and expects to carry on. Forgetting the link would turn that
+   * resumption into a fresh setup — and would revoke the entitlement with it.
+   */
+  it.each(['suspend', 'unsuspend', 'new_permissions_accepted', 'created'])(
+    'leaves the link alone on installation.%s',
+    (action) => {
+      const result = decideInstallationEvent(
+        'installation',
+        deleted({ action }),
+      );
+      expect(result.forget).toBe(false);
+    },
+  );
+
+  it('ignores every other event, including the one it sits beside', () => {
+    for (const event of ['pull_request', 'check_suite', 'push', null]) {
+      expect(decideInstallationEvent(event, deleted()).forget).toBe(false);
+    }
+  });
+
+  // A delivery naming no installation cannot be acted on: forgetting "nothing"
+  // would be a no-op at best and, with a loose lookup, somebody else's row.
+  it.each([
+    ['no installation', { action: 'deleted' }],
+    ['a non-numeric id', { action: 'deleted', installation: { id: 'x' } }],
+    ['not an object', 'deleted'],
+  ])('refuses a delivery with %s', (_label, payload) => {
+    expect(decideInstallationEvent('installation', payload).forget).toBe(false);
   });
 });

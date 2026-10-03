@@ -149,7 +149,12 @@ function describeAccessRefusal(
     return {
       status: 403,
       body: {
-        error: `${where} is private, and workspace "${caller.organizationSlug}" is limited to public repositories.`,
+        /*
+         * Not "limited to public repositories", which read as a plan ceiling.
+         * `apps/web` grants this entitlement when a workspace connects a
+         * GitHub App installation, so a caller reaching this has none linked.
+         */
+        error: `${where} is private, and workspace "${caller.organizationSlug}" has no GitHub App installation connected. Connect GitHub in the dashboard and run this again.`,
       },
     };
   }
