@@ -79,32 +79,66 @@ export function ConversionDialog({
 /**
  * No account on this site.
  *
- * Two paths work today, and this names both. The CLI runs from a terminal; the
- * hosted app runs the same pipeline from a browser. This said the second did
- * not exist — "Hosted accounts are not built yet … no accounts, no projects, no
- * billing" — for as long as it did exist, with sign-up open.
+ * Two paths work today and this names both, in the order the product actually
+ * leads with them: the GitHub App, which puts a check on every pull request
+ * and corrects what is safe, and the CLI, which translates a repository when
+ * somebody asks it to. The CLI used to be first here, which matched the old
+ * landing page and no longer matches the product.
+ *
+ * **One sentence in here was false and is corrected.** It read "Public
+ * repositories are self-serve; private ones are not yet", which stopped being
+ * true when connecting a GitHub installation started granting the
+ * private-repository entitlement in the same transaction. A private repository
+ * is self-serve now, and what bounds it is the installation: Layersky reaches
+ * exactly the repositories the owner selected, and nothing else.
  *
  * Still no email field and no password field here. Accounts live on the app's
  * own origin, which this static site does not talk to (`ACCOUNT_BACKEND`), so a
  * form here could only forward the reader somewhere else. The link does that
  * honestly.
- *
- * The pull request button is gone: the only pull request the site could point
- * at is in a private repository, and a 404 is not a thing that "genuinely
- * works".
  */
 function AnonymousBranch() {
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Run it on your repository</DialogTitle>
+        <DialogTitle>Put Layersky on your repository</DialogTitle>
         <DialogDescription>
-          Two ways work today. Both end in a pull request on your repository.
+          Two ways work today. The first needs nothing installed locally.
         </DialogDescription>
       </DialogHeader>
-
       <DialogBody className="flex flex-col gap-5">
-        <div className="flex flex-col gap-3">
+        <div className="flex items-start gap-3">
+          <Globe
+            className="mt-0.5 size-4 shrink-0 text-tertiary"
+            aria-hidden="true"
+            strokeWidth={1.5}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-body font-medium text-primary">
+              Install the GitHub App
+            </p>
+            <p className="mt-1 text-small leading-5 text-secondary">
+              Create a workspace, connect GitHub, and every pull request gets an
+              i18n check on the commit. What is safe to fix comes back as a
+              corrective pull request; everything else stays a finding. The
+              check never blocks a merge.
+            </p>
+            <p className="mt-2 text-caption leading-5 text-secondary">
+              Public and private repositories, both self-serve. Layersky reaches
+              only the repositories you select when you install it.
+            </p>
+          </div>
+        </div>
+
+        {/*
+         * The CLI, second and labelled for what it is.
+         *
+         * It is not deprecated and it is not broken — it extracts hardcoded
+         * strings from source, which the check does not do at all. It is
+         * second because it is the path somebody starts by hand, and this
+         * product's argument is the one nobody has to remember.
+         */}
+        <StateRule tone="neutral" className="ps-3">
           <div className="flex items-start gap-3">
             <Terminal
               className="mt-0.5 size-4 shrink-0 text-tertiary"
@@ -113,10 +147,12 @@ function AnonymousBranch() {
             />
             <div className="min-w-0 flex-1">
               <p className="text-body font-medium text-primary">
-                Start from the command line
+                Or extract and translate from the command line
               </p>
               <p className="mt-1 text-small leading-5 text-secondary">
-                Detection and extraction run on your machine.{' '}
+                A different job: it finds hardcoded strings in your source,
+                translates them and opens one pull request. Detection and
+                extraction run on your machine.{' '}
                 {CLI_PERSONAL_TOKENS_LIVE
                   ? 'Translation goes through our hosted API, with a personal token from your workspace.'
                   : 'Translation goes through an API you run yourself.'}
@@ -143,40 +179,12 @@ function AnonymousBranch() {
               </p>
             </div>
           </div>
-        </div>
-
-        {/*
-         * The hosted path, with its limits stated where it is offered.
-         *
-         * Neutral, not jade: it works, but it is early access with a narrow
-         * scope, and the limits below are the part a visitor needs before
-         * clicking rather than after.
-         */}
-        <StateRule tone="neutral" className="ps-3">
-          <div className="flex items-start gap-3">
-            <Globe
-              className="mt-0.5 size-4 shrink-0 text-tertiary"
-              aria-hidden="true"
-              strokeWidth={1.5}
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-body font-medium text-primary">
-                Or run it from the hosted app
-              </p>
-              <p className="mt-1 text-small leading-5 text-secondary">
-                Early access. Create an account, connect a GitHub repository,
-                choose languages and run the pipeline from your browser — no API
-                to run. Public repositories are self-serve; private ones are not
-                yet.
-              </p>
-              <p className="mt-2 text-caption leading-5 text-secondary">
-                There is no billing and nothing is charged. When there is, it
-                will be a flat subscription, never metered by words, keys or
-                seats.
-              </p>
-            </div>
-          </div>
         </StateRule>
+
+        <p className="text-caption leading-5 text-secondary">
+          There is no billing and nothing is charged. When there is, it will be
+          a flat subscription, never metered by words, keys or seats.
+        </p>
       </DialogBody>
 
       <DialogFooter>
@@ -187,7 +195,7 @@ function AnonymousBranch() {
         </Button>
         <Button asChild variant="primary" className="w-full sm:w-auto">
           <a href={APP_URL} target="_blank" rel="noreferrer noopener">
-            Open the hosted app
+            Connect your repository
             <ArrowUpRight aria-hidden="true" />
           </a>
         </Button>

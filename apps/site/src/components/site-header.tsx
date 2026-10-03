@@ -162,8 +162,19 @@ export function SiteHeader() {
              * Filled, and the only filled control in the bar. Two would make
              * neither primary.
              */}
+            {/*
+             * "Open the app", not "Connect a repository", and the reason is
+             * measured rather than stylistic: at exactly 768px — the width at
+             * which this row appears at all — the longer label pushed the bar
+             * 33px past the viewport and every page on the site scrolled
+             * sideways. The hero carries the full invitation, where there is
+             * room for it; this one has to fit.
+             *
+             * It also says what the button does. It opens the hosted app; the
+             * repository is connected two screens later.
+             */}
             <Button asChild variant="primary" size="sm">
-              <a href={APP_URL}>Start a run</a>
+              <a href={APP_URL}>Open the app</a>
             </Button>
           </div>
           <SiteNavMenu items={NAV} />

@@ -1,65 +1,90 @@
-import { PIPELINE_STAGES } from '@localize-infra/ui';
 import { expect, test } from '@playwright/test';
 
 /**
- * The pipeline is the product's visual identity (DESIGN.md §1.4), and its
- * stages are defined once in `PIPELINE_STAGES`.
+ * The landing page must explain the product it sells.
  *
- * This asserts the landing page actually explains all of them. It is not a
- * hypothetical guard: the page previously ran detect → translate → pull
- * request and omitted Escalate, so the section explaining how the product
- * works left out the one behaviour the product is built around — that the
- * agent surfaces ambiguity rather than guessing at it.
+ * This file used to assert the opposite of what it now asserts, and that is
+ * the point of the comment. It read `PIPELINE_STAGES` and required the page
+ * to name all five legacy stages — detect, extract, translate, escalate,
+ * pull request — under the heading "One command, five stages". That guard was
+ * correct for as long as the page sold that pipeline. The page now sells the
+ * check, and a guard pinning the old copy would have made replacing it look
+ * like a regression.
  *
- * Checked against rendered text rather than the source array, because a step
- * that exists in the data and never reaches the page would pass the weaker
- * test and still fail the reader.
+ * `PIPELINE_STAGES` is untouched, and `apps/web` still tests it: a run on
+ * `/runs/[id]` really does have five stages. What moved is which product the
+ * marketing page leads with.
  */
 
-/**
- * The stage rail, by its accessible name.
- *
- * It used to be found by filtering lists for the text "Detect and extract".
- * The hero's run artifact now draws the same five stages, so a text filter
- * matches that one first and this would silently assert against the wrong
- * element. Both lists are named; this one asks for the one it means.
- */
-function steps(page: import('@playwright/test').Page) {
-  return page.getByRole('list', { name: 'The five pipeline stages' });
+/** The four finding kinds, named exactly as `packages/eval/src/audit` emits them. */
+const FINDING_KINDS = [
+  'missing-translation',
+  'placeholder-mismatch',
+  'icu-invalid',
+  'missing-source',
+];
+
+function findings(page: import('@playwright/test').Page) {
+  return page.getByRole('table', {
+    name: 'What the check finds and what it fixes',
+  });
 }
 
-test('how it works explains every canonical pipeline stage', async ({
+test('the landing page names every finding the check can report', async ({
   page,
 }) => {
   await page.goto('/');
   await expect(
-    page.getByRole('heading', { name: /One command, five stages/i }),
+    page.getByRole('heading', { name: /names four problems and fixes one/i }),
   ).toBeVisible();
 
-  const text = ((await steps(page).textContent()) ?? '').toLowerCase();
-
-  for (const stage of PIPELINE_STAGES) {
-    expect(
-      text,
-      `the landing page never mentions the "${stage.name}" stage`,
-    ).toContain(stage.name.toLowerCase());
+  const text = ((await findings(page).textContent()) ?? '').toLowerCase();
+  for (const kind of FINDING_KINDS) {
+    expect(text, `the landing page never mentions "${kind}"`).toContain(kind);
   }
 });
 
-test('the steps are numbered in pipeline order', async ({ page }) => {
+/*
+ * The one claim on this page that a reader will hold the product to: three of
+ * the four findings are never corrected automatically. If a future change made
+ * the table say "Yes" four times, the product would be claiming it rewrites
+ * translations somebody wrote by hand.
+ */
+test('exactly one finding is corrected automatically', async ({ page }) => {
   await page.goto('/');
-  // One step per canonical stage. The section used to collapse detect and
-  // extract into a single numbered step; drawing the rail removed the reason to.
-  const items = steps(page).locator('> li');
-  await expect(items).toHaveCount(PIPELINE_STAGES.length);
+  const rows = findings(page).locator('tbody tr');
+  await expect(rows).toHaveCount(FINDING_KINDS.length);
 
-  // Escalate must come after Translate: you cannot escalate an ambiguity you
-  // have not yet tried to resolve, and the order is the argument.
-  const body = ((await steps(page).textContent()) ?? '').toLowerCase();
-  expect(body.indexOf('escalate')).toBeGreaterThan(body.indexOf('translate'));
-  expect(body.indexOf('pull request')).toBeGreaterThan(
-    body.indexOf('escalate'),
+  const answers = await rows.evaluateAll((trs) =>
+    trs.map((tr) => tr.querySelectorAll('td')[2]?.textContent?.trim() ?? ''),
   );
+  expect(answers.filter((a) => a.startsWith('Yes'))).toHaveLength(1);
+  expect(answers.filter((a) => a.startsWith('No'))).toHaveLength(3);
+});
+
+/*
+ * The hero's evidence has to be openable. The old band showed a run in a
+ * *private* repository and the page had to admit the pull request could not
+ * be linked; this replaced it with a public one, and the whole reason that is
+ * an improvement is that the links work.
+ */
+test('the hero links the pull request its evidence comes from', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const band = page.locator(
+    '[aria-label="A check Layersky posted on a real pull request"]',
+  );
+  const links = band.getByRole('link');
+  await expect(links.first()).toBeVisible();
+
+  for (const href of await links.evaluateAll((as) =>
+    as.map((a) => (a as HTMLAnchorElement).href),
+  )) {
+    expect(href).toMatch(
+      /^https:\/\/github\.com\/maxencerousseau38-prog\/localize-infra-fixture-i18next\/pull\/\d+$/,
+    );
+  }
 });
 
 /**

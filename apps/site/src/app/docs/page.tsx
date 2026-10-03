@@ -6,8 +6,11 @@ import {
   APP_URL,
   CLI_PERSONAL_TOKENS_LIVE,
   CLI_PUBLISHED_TO_NPM,
+  EXAMPLE_CYCLE,
+  FIXTURE_REPO_URL,
   GITHUB_REPO_URL,
   INSTALL_COMMAND,
+  SUPPORTED_I18N_LIBRARY,
 } from '@/lib/constants';
 import { Badge, StateRule } from '@localize-infra/ui';
 import type { Metadata } from 'next';
@@ -17,12 +20,28 @@ import type * as React from 'react';
 export const metadata: Metadata = {
   title: 'Documentation',
   description:
-    'How to run the localize-infra CLI today: building from source, the init command and its flags, framework detection, merge behaviour, and the extraction limits we have not solved yet.',
+    'Installing the GitHub App, what the i18n check reports on a pull request, which findings are corrected automatically, and the CLI for extracting hardcoded strings.',
   alternates: { canonical: '/docs' },
 };
 
+/*
+ * The GitHub App first, the CLI second.
+ *
+ * This page documented one product — the CLI — under the title "Everything
+ * the CLI does, and everything it does not", while the thing the product now
+ * leads with had no entry at all. A reader who installed the App from the
+ * landing page arrived here and found a page about something else.
+ *
+ * The CLI sections keep their ids. They are linked from the hero, the
+ * conversion dialog and `docs/releasing.md`, and renaming them to tidy a
+ * table of contents would break three live links to fix nothing.
+ */
 const TOC: TocEntry[] = [
-  { id: 'status', label: 'Before you start' },
+  { id: 'github-app', label: 'The GitHub App' },
+  { id: 'check', label: 'What the check reports' },
+  { id: 'correction', label: 'What it fixes for you' },
+  { id: 'check-limits', label: 'Limits of the check' },
+  { id: 'status', label: 'The CLI: before you start' },
   { id: 'install', label: 'Running it today' },
   { id: 'pipeline', label: 'What init does' },
   { id: 'reference', label: 'Command reference' },
@@ -220,18 +239,211 @@ export default function DocsPage() {
     <>
       <PageHeader
         eyebrow="Documentation"
-        title="Everything the CLI does, and everything it does not"
-        lede="One command, eight flags, and a short list of limits we would rather you read here than discover in a pull request."
+        title="What it checks, what it fixes, and what it refuses"
+        lede="Two ways in: a GitHub App that watches every pull request, and a CLI that extracts hardcoded strings from source. Both are documented here, with the limits we would rather you read than discover in a pull request."
       />
 
       <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-16">
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_13rem] lg:gap-16">
           <div className="min-w-0">
             <Section
+              id="github-app"
+              title="The GitHub App"
+              badge={<Badge tone="neutral">Early access</Badge>}
+            >
+              <p>
+                Three steps, in this order, and the hosted app walks you through
+                them one at a time:
+              </p>
+              <ol className="mt-4 space-y-3">
+                <li>
+                  <strong className="font-medium text-primary">
+                    Create a workspace
+                  </strong>{' '}
+                  at{' '}
+                  <a
+                    href={APP_URL}
+                    className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  >
+                    the hosted app
+                  </a>
+                  . An email address and a password; nothing else is asked for,
+                  and nothing is charged.
+                </li>
+                <li>
+                  <strong className="font-medium text-primary">
+                    Connect GitHub.
+                  </strong>{' '}
+                  This installs the App and asks which repositories it may
+                  reach. Layersky can read exactly those and nothing else —
+                  changing the selection on GitHub changes what it sees,
+                  immediately. Public and private repositories are both
+                  self-serve.
+                </li>
+                <li>
+                  <strong className="font-medium text-primary">
+                    Open a pull request.
+                  </strong>{' '}
+                  The next one that touches a locale catalogue gets a check on
+                  its commit. There is nothing to configure and no file to add
+                  to your repository.
+                </li>
+              </ol>
+              <p className="mt-4">
+                Every check your workspace receives is listed under{' '}
+                <em>Health</em> in the app, with the findings behind it.
+              </p>
+            </Section>
+
+            <Section id="check" title="What the check reports">
+              <p>
+                A check run named <Code>{EXAMPLE_CYCLE.checkName}</Code> appears
+                on the commit. Its conclusion is <strong>always neutral</strong>
+                : it reports, it never fails, and it cannot block a merge even
+                on a repository with required checks. That is a deliberate
+                choice rather than a limitation to be fixed quietly — reddening
+                a repository on the strength of an unvalidated hypothesis is how
+                a check gets switched off in its first week.
+              </p>
+              <p className="mt-4">
+                It answers only for the keys the pull request{' '}
+                <strong>changed</strong> — added, edited or deleted — compared
+                against the commit the branch was created from, in every locale
+                whose file the pull request touches. It never reports the
+                backlog of keys your repository has never translated. Four
+                findings are possible:
+              </p>
+              <ul className="mt-4 space-y-2.5">
+                <li>
+                  <Code>missing-translation</Code> — the source defines a key
+                  and a language has no value for it.
+                </li>
+                <li>
+                  <Code>placeholder-mismatch</Code> — a translation drops or
+                  renames a placeholder the source has.
+                </li>
+                <li>
+                  <Code>icu-invalid</Code> — an ICU message does not parse.
+                </li>
+                <li>
+                  <Code>missing-source</Code> — a language carries a key the
+                  source locale does not.
+                </li>
+              </ul>
+              <p className="mt-4">
+                If the repository cannot be analysed at all, the check says so
+                and stays neutral. It never reports “no problems found” about
+                something it did not read.
+              </p>
+            </Section>
+
+            <Section id="correction" title="What it fixes for you">
+              <p>
+                One case: <Code>missing-translation</Code>. Layersky translates
+                the missing values and opens a second pull request{' '}
+                <strong>against your branch</strong>, so merging it updates the
+                branch and re-runs the same check. Nothing is pushed to your
+                default branch and nothing is merged for you.
+              </p>
+              <p className="mt-4">
+                The other three findings are never corrected. Which side of a
+                placeholder mismatch is wrong is a judgement, a rewritten plural
+                can be grammatical and wrong, and deleting a key that a language
+                has and the source does not is the obvious fix and the
+                destructive one.
+              </p>
+              <p className="mt-4">
+                Three things happen before a translation is written. The
+                workspace is charged against its daily ceiling <em>before</em>{' '}
+                any model is called, so a correction that cannot be delivered is
+                never bought. The corrected file is then re-audited by the same
+                code that produced the findings, and a translation it still
+                complains about is discarded rather than committed. And a
+                translation the model was not confident about is never written
+                at all — the question it asked goes on the check instead.
+              </p>
+              <p className="mt-4">
+                The pull request body names every language that was asked for,
+                every one that landed, and every one that did not, with the
+                reason. A correction can be partial; it cannot be silent.
+              </p>
+              <p className="mt-4">
+                One delivery corrects at most <strong>40</strong>{' '}
+                string-language pairs. Beyond that it refuses with a sentence
+                rather than starting work it will not finish.
+              </p>
+            </Section>
+
+            <Section id="check-limits" title="Limits of the check">
+              <StateRule tone="degraded">
+                <p>
+                  <strong className="font-medium text-primary">
+                    {SUPPORTED_I18N_LIBRARY} only.
+                  </strong>{' '}
+                  next-intl and react-intl are detected and answered with “not
+                  supported”, which is a different and more useful answer than
+                  silence — but it is still not support.
+                </p>
+              </StateRule>
+              <ul className="mt-4 space-y-2.5">
+                <li>
+                  Catalogues are looked for in <Code>public/locales</Code>,{' '}
+                  <Code>locales</Code> and <Code>src/locales</Code>. Nowhere
+                  else.
+                </li>
+                <li>
+                  Corrections are only written under <Code>locales/</Code>. A
+                  repository whose catalogues live elsewhere is{' '}
+                  <strong>analysable but not correctable</strong>, and the check
+                  says so rather than failing after the translations have been
+                  paid for.
+                </li>
+                <li>
+                  A custom <Code>keySeparator</Code> is not supported and would
+                  produce false missing keys.
+                </li>
+                <li>
+                  The check reads catalogues, not source. A key your code calls
+                  that no catalogue defines is not what this finds.
+                </li>
+              </ul>
+              <p className="mt-4">
+                A worked example on a public repository: pull request{' '}
+                <a
+                  href={EXAMPLE_CYCLE.pull.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  #{EXAMPLE_CYCLE.pull.number}
+                </a>{' '}
+                of{' '}
+                <a
+                  href={FIXTURE_REPO_URL}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  our i18next fixture
+                </a>{' '}
+                — the check, the corrective pull request it produced, and the
+                same check green afterwards.
+              </p>
+            </Section>
+
+            <Section
               id="status"
-              title="Before you start"
+              title="The CLI: before you start"
               badge={<Badge tone="neutral">Pre-alpha</Badge>}
             >
+              <p>
+                Everything below is a <strong>different tool</strong> from the
+                check above. The CLI finds hardcoded strings in your source,
+                translates them and opens one pull request; the check reads
+                catalogues on a pull request somebody already opened. They share
+                a translation API and nothing else, and either works without the
+                other.
+              </p>
               <StateRule tone="neutral">
                 {CLI_PUBLISHED_TO_NPM && CLI_PERSONAL_TOKENS_LIVE ? (
                   <>
@@ -264,9 +476,11 @@ export default function DocsPage() {
                       before it writes anything.
                     </p>
                     <p className="mt-3">
-                      Early access: public repositories are self-serve, private
-                      ones are not yet, and there is no billing. You can still
-                      run your own API instead — see below.
+                      Early access. Public and private repositories are both
+                      self-serve; what bounds the CLI is the same thing that
+                      bounds the check, your GitHub installation. There is no
+                      billing. You can still run your own API instead — see
+                      below.
                     </p>
                   </>
                 ) : CLI_PUBLISHED_TO_NPM ? (
@@ -309,9 +523,8 @@ export default function DocsPage() {
                       </a>{' '}
                       is the other way in: it runs the same pipeline from a
                       browser against a repository you connect, with no API to
-                      run. It is early access — public repositories are
-                      self-serve, private ones are not yet, and there is no
-                      billing. This page documents the CLI.
+                      run. Early access, public and private repositories both
+                      self-serve, and no billing.
                     </p>
                   </>
                 ) : (
@@ -335,7 +548,7 @@ export default function DocsPage() {
               <p>
                 What does work today, end to end, is the pipeline itself:
                 detection, extraction, translation, merge, and a real pull
-                request opened through a GitHub App.
+                request opened through the same GitHub App the check uses.
               </p>
             </Section>
 

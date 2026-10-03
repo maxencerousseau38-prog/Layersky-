@@ -13,6 +13,16 @@ export const PUBLIC_ROUTES = [
   { path: '/security', priority: 0.7 },
   { path: '/pricing', priority: 0.7 },
   { path: '/roadmap', priority: 0.5 },
+  /*
+   * The pages a first external team needs before installing anything, and
+   * which this site did not have: what you are agreeing to, what is held
+   * about you, and where a problem goes. Low priority because nobody
+   * searches for them — but in the sitemap, because they are findable
+   * exactly when somebody is deciding whether to trust this.
+   */
+  { path: '/terms', priority: 0.3 },
+  { path: '/privacy', priority: 0.3 },
+  { path: '/contact', priority: 0.3 },
 ] as const;
 
 /**

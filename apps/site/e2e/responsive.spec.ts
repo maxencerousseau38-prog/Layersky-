@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { PUBLIC_ROUTES } from '../src/lib/routes';
 
 /**
  * Responsive tiers (DESIGN.md §3.4, §4.5, §12).
@@ -50,15 +51,10 @@ test('the hero artifact never bleeds off the screen', async ({ page }) => {
 });
 
 test('no route overflows horizontally at any tier', async ({ page }) => {
-  const routes = [
-    '/',
-    '/docs',
-    '/benchmarks',
-    '/quality',
-    '/pricing',
-    '/roadmap',
-    '/security',
-  ];
+  // Read from `PUBLIC_ROUTES` rather than copied beside it: a page added to
+  // the navigation and not to this array is a page nobody sweeps, and the
+  // three legal pages were exactly that on the day they shipped.
+  const routes = PUBLIC_ROUTES.map((route) => route.path);
   const bad: string[] = [];
   for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });

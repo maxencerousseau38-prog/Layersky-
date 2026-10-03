@@ -27,6 +27,7 @@ import {
 import { describeFindings, recordCheck } from '@/lib/i18n/record-check';
 import { chargeWorkspace } from '@/lib/quota/charge';
 import { resolveInstallationWorkspace } from '@/lib/quota/installation';
+import { recordModelUsage } from '@/lib/quota/usage';
 import { loadI18nextCatalogues } from '@localize-infra/core';
 import type { AuditReport } from '@localize-infra/eval';
 import { after } from 'next/server';
@@ -604,6 +605,21 @@ async function correct(args: {
           units: plannedUnits,
         });
       },
+    });
+
+    /*
+     * What it cost, recorded before anything is reported.
+     *
+     * Before the refusal branch, not after it: a correction can spend on five
+     * locales and still refuse, and a refusal is the branch most likely to be
+     * read as free. It never throws — the money is gone either way, and a
+     * bookkeeping failure must not turn a correction that worked into one that
+     * did not.
+     */
+    await recordModelUsage({
+      organizationId,
+      operation: 'correction',
+      usage: outcome.usage,
     });
 
     if (outcome.refusal) {

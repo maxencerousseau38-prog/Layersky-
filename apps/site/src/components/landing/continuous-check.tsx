@@ -1,4 +1,5 @@
 import { Container, Section } from '@/components/landing/section';
+import { FIXTURE_REPO_URL } from '@/lib/constants';
 import { Check, GitPullRequest, X } from 'lucide-react';
 
 /**
@@ -158,7 +159,27 @@ export function ContinuousCheck() {
                 ))}
               </ul>
 
-              <p className="mt-4 border-t border-subtle pt-4 text-small leading-5 text-tertiary">
+              {/*
+               * The correction section of the check, verbatim.
+               *
+               * It was missing, and its absence was the page's largest
+               * remaining gap: the product fixes what is safe and this card
+               * showed only the finding half, so a reader had no way to know
+               * which of the two happened here. On this pull request the
+               * answer is neither — both findings are placeholder
+               * mismatches, which are never corrected automatically, and the
+               * check says so in those words.
+               */}
+              <div className="mt-4 border-t border-subtle pt-4">
+                <p className="text-caption font-medium uppercase tracking-wide text-tertiary">
+                  Automatic correction
+                </p>
+                <p className="mt-1.5 text-small leading-5 text-secondary">
+                  Nothing was translated. Nothing here is safe to correct
+                  automatically.
+                </p>
+              </div>
+              <p className="mt-4 text-small leading-5 text-tertiary">
                 A dropped placeholder renders the literal token to a user, or
                 throws. It is the failure that survives review, because the file
                 it lives in is the one nobody reads.
@@ -168,8 +189,17 @@ export function ContinuousCheck() {
         </div>
 
         <p className="mt-6 text-small text-inverse/60">
-          Pull request #14 on our i18next fixture, 29 September 2026. The check
-          is the product, not a screenshot of one.
+          Pull request{' '}
+          <a
+            href={`${FIXTURE_REPO_URL}/pull/14`}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="rounded-sm text-inverse underline underline-offset-2 decoration-inverse/40 hover:decoration-inverse focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            #14
+          </a>{' '}
+          on our i18next fixture, 2 October 2026. The repository is public, so
+          this is the check itself rather than a description of one.
         </p>
       </Container>
     </Section>

@@ -305,3 +305,58 @@ What cannot be seen signed out is whether the running deployment reads the
 key. The panel only shows it on a workspace with no GitHub link: *Connect
 GitHub* means the key is there, `Missing: SUPABASE_SERVICE_ROLE_KEY` means it is
 not. A workspace that is already connected shows neither.
+
+## The GitHub App's permissions, and the two that should not be there
+
+`GET /app` reports six, and the installation holds all six:
+
+```
+checks: write          the i18n check on the commit
+contents: write        read a pull request's files, create a branch, commit
+metadata: read         granted to every App; lists reachable repositories
+pull_requests: write   open the corrective pull request
+artifact_metadata: write    nothing in this repository reads it
+codespaces_metadata: read   nothing in this repository reads it
+```
+
+Verified on 2026-10-03: `grep -rn "artifact_metadata\|codespaces_metadata"`
+across the whole repository matches only prose about them. They are real
+excess permission on every installation, and `/security` lists them for that
+reason rather than quietly omitting them.
+
+**There is no API for this.** `PATCH /app` with `default_permissions` answers
+**404** authenticated as the App — the endpoint does not exist. Permissions are
+a form on
+`https://github.com/settings/apps/localize-infra/permissions`, and removing
+them is a manual step somebody has to take.
+
+### Why this is not the September trap, and how to be sure
+
+`CLAUDE.md` records a day lost to this: changing an App's permissions is a
+*request*, the existing installation keeps the old set until the owner accepts,
+no banner ever appeared, and the only way out was uninstall-and-reinstall —
+which minted a new `installation_id` and broke "Run pipeline" until the row in
+`organization_github_installations` was updated.
+
+That episode was an **addition** (`checks: write` and the `pull_request`
+event). GitHub applies a **narrowing** immediately and asks nobody, because no
+installation is being granted anything. So removing these two should need no
+acceptance at all.
+
+"Should" is not a check. Do it in this order and stop if a step disagrees:
+
+1. Untick both on the permissions form and save.
+2. `GET /app` — the two are gone from `permissions`.
+3. `GET /app/installations/166148995` — the two are gone from `permissions`,
+   and `checks`, `contents`, `metadata` and `pull_requests` are all still
+   there. **This is the step that matters.** If the installation still lists
+   them, the change is pending acceptance and the narrowing did not apply;
+   leave it pending rather than reinstalling, because a reinstall changes the
+   installation id.
+4. Emit an installation token and confirm it still lists the repositories it
+   should reach, and can still write a check run. An installation whose
+   permissions were edited and which can no longer post a check is a silently
+   broken correction loop.
+
+Both reads need a JWT signed with `GITHUB_APP_PRIVATE_KEY_PATH`; `gh api`
+answers 401 for them, because it authenticates as a user.

@@ -41,6 +41,22 @@ const GROUPS: Array<{
       { href: GITHUB_REPO_URL, label: 'Source on GitHub', external: true },
     ],
   },
+  /*
+   * Terms, privacy and a contact channel — the three the site did not have.
+   *
+   * A fourth column rather than appended to Trust: a reader looking for
+   * "where do I complain" and a reader looking for "what do you send to a
+   * model" are doing different things, and the Trust group is already the
+   * answer to the second.
+   */
+  {
+    title: 'Legal',
+    links: [
+      { href: '/terms', label: 'Terms' },
+      { href: '/privacy', label: 'Privacy' },
+      { href: '/contact', label: 'Contact & support' },
+    ],
+  },
 ];
 
 const LOCALE_FILES = [
@@ -57,7 +73,7 @@ export function SiteFooter() {
     <footer className="border-t border-subtle">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
-          <div className="lg:col-span-5">
+          <div className="lg:col-span-4">
             <p className="font-display text-title font-semibold text-primary">
               Your translations are files in your repository.
             </p>
@@ -89,7 +105,11 @@ export function SiteFooter() {
             </ul>
           </div>
 
-          <div className="grid gap-8 sm:grid-cols-3 lg:col-span-6 lg:col-start-7">
+          {/* Four groups now, not three. `sm:grid-cols-2` rather than
+              three-across on a phone-and-a-half: four columns at 640 give
+              each link list ~140px, which wraps "Contact & support" onto
+              three lines. */}
+          <div className="grid gap-8 sm:grid-cols-2 lg:col-span-8 lg:col-start-5 lg:grid-cols-4">
             {GROUPS.map((group) => (
               <nav key={group.title} aria-label={group.title}>
                 <h2 className="text-eyebrow font-medium uppercase text-tertiary">

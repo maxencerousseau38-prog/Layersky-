@@ -89,16 +89,30 @@ const SUBPROCESSORS = [
  * they were intended.
  *
  * This listed two — contents and pull requests — "and nothing else". GitHub
- * reports five. `metadata: read` is granted to every App. The last two are
+ * reports six. `metadata: read` is granted to every App. The last two are
  * used by no code in this product; they should not be there, and until they
  * are removed from the App's settings this list says they are.
+ *
+ * **`checks: write` was missing from this list**, which is worse than the two
+ * extras it was written to disclose: it is the permission the product's main
+ * feature runs on, and a page whose stated job is to list the permissions
+ * "as GitHub reports them" was short one. Re-read from `GET /app` and
+ * `GET /app/installations/166148995` on 2026-10-03; the installation holds
+ * all six.
  */
 const PERMISSIONS: Array<{ scope: string; use: string }> = [
   {
     scope: 'contents: write',
     use: 'read the files a hosted run extracts from, create a branch, commit locale files',
   },
-  { scope: 'pull_requests: write', use: 'open the pull request' },
+  {
+    scope: 'pull_requests: write',
+    use: 'open the pull request, and read the files a pull request changed',
+  },
+  {
+    scope: 'checks: write',
+    use: 'post the i18n check on the commit, and update it when the branch moves',
+  },
   {
     scope: 'metadata: read',
     use: 'granted to every GitHub App; lists the repositories an installation reaches',
@@ -357,7 +371,13 @@ export default function SecurityPage() {
         {/* The residency gap is stated plainly rather than omitted. A buyer
             discovers this in a security review anyway; finding it disclosed is
             a far better outcome than finding it hidden. */}
-        <StateRule tone="degraded" className="max-w-[70ch]">
+        {/* Addressable, because /privacy links straight to it. A disclosure
+            a reader has to hunt for on a long page is halfway to hidden. */}
+        <StateRule
+          id="residency"
+          tone="degraded"
+          className="max-w-[70ch] scroll-mt-24"
+        >
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="font-display text-headline font-semibold text-primary">
               Data residency: an honest gap
@@ -390,8 +410,10 @@ export default function SecurityPage() {
               GitHub App permissions
             </h2>
             <p className="mt-3 text-body leading-6 text-secondary">
-              As GitHub reports them for the installation today. Two of them are
-              more than the product needs.
+              As GitHub reports them for the installation today, read from the
+              API rather than from our own notes. Two of them are more than the
+              product needs and are listed so that the gap is ours to close
+              rather than yours to discover.
             </p>
             <ul className="mt-5 space-y-2.5 text-body leading-6 text-secondary">
               {PERMISSIONS.map(({ scope, use }) => (

@@ -1,14 +1,7 @@
-import { RunArtifact } from '@/components/landing/run-artifact';
-import {
-  APP_URL,
-  CLI_PERSONAL_TOKENS_LIVE,
-  CLI_PUBLISHED_TO_NPM,
-  EXAMPLE_PR_URL,
-  INSTALL_COMMAND,
-} from '@/lib/constants';
-import { Badge, Button, CopyCommand } from '@localize-infra/ui';
+import { CheckCycle } from '@/components/landing/check-cycle';
+import { APP_URL, EXAMPLE_CYCLE } from '@/lib/constants';
+import { Badge, Button } from '@localize-infra/ui';
 import { GitPullRequest } from 'lucide-react';
-import Link from 'next/link';
 
 /**
  * The hero.
@@ -20,10 +13,16 @@ import Link from 'next/link';
  * as one more card rather than as the thing being sold.
  *
  * Now the words and the product are on different grounds. The argument stays on
- * canvas at a narrow measure; the run drops onto a full-bleed dark band and is
- * the first thing on the page with any weight to it. That band also absorbs the
- * old PrProof section, which showed the same repository a second time further
- * down — one run, shown once, at the moment it does the most work.
+ * canvas at a narrow measure; the evidence drops onto a full-bleed dark band and
+ * is the first thing on the page with any weight to it.
+ *
+ * **What that band shows changed on 2026-10-03.** It used to be run
+ * `b6fbbf11` — the legacy pipeline, extracting and translating a whole
+ * repository from a button in the hosted app — against a *private* fixture,
+ * so the caption had to admit the pull request could not be linked. It now
+ * shows the guardrail cycle on a public repository: a check that found six
+ * problems, the corrective pull request, and the same check green. The page's
+ * strongest moment is now both the current product and openable by a stranger.
  */
 export function Hero() {
   return (
@@ -101,7 +100,7 @@ export function Hero() {
              * `tone="neutral"` is the template's `outline`: a bordered chip
              * with no icon, which is right for a label that reports no state.
              */}
-            <Badge tone="neutral">Git-native i18n infrastructure</Badge>
+            <Badge tone="neutral">Git-native i18n maintenance</Badge>
 
             {/*
              * 500, not 600, and only at this step.
@@ -121,7 +120,7 @@ export function Hero() {
              * a reason that only holds at 68px.
              */}
             <h1 className="mt-4 max-w-[19ch] font-display text-display-xl font-medium text-primary lg:text-display-2xl">
-              Translations that keep up with your code.
+              Every pull request, checked for what it broke.
             </h1>
 
             {/* One sentence. The run below is the explanation; a second
@@ -130,182 +129,97 @@ export function Hero() {
                 run below is the explanation; a third sentence here only
                 delays it. */}
             <p className="mt-5 max-w-[56ch] text-prose text-secondary">
-              Layersky reads every pull request and says what it broke — a key
-              with no translation, a placeholder dropped on the way into French
-              — as a check on the commit. Point the CLI at a repository and it
-              writes the translations too, and opens the pull request.
+              Layersky checks the i18n changes in every pull request, reports
+              the problems as a check on the commit, and fixes the safe ones
+              automatically in a pull request of its own. The rest it leaves
+              named, for a person.
             </p>
 
             {/*
-             * The filled action is the pull request only while a visitor can
-             * open it.
+             * Two actions, and the filled one is the thing being sold.
              *
-             * It linked to a pull request in a private repository, which is a
-             * 404 for everyone but its owner — the page's strongest action was
-             * its one broken one. §4.5.3 already settles what replaces an
-             * action that does not work: the strongest one that does, promoted.
-             * With no public pull request that is the docs.
+             * It used to read "Start a run", which named the legacy pipeline —
+             * a person clicking a button in the hosted app to extract and
+             * translate a whole repository. That is still there and still
+             * works, but it is not what this page argues for any more: the
+             * product is a check that runs on a pull request nobody had to
+             * remember. The filled action is therefore the first step of that
+             * path, in the hosted app's own words — create a workspace,
+             * connect GitHub, get your first health check.
+             *
+             * The second action is evidence rather than documentation, and
+             * that is new: the guardrail's fixture repository is **public**,
+             * so for the first time this page can hand a visitor the actual
+             * pull request instead of describing one. §4.5.3 ranks an action
+             * that works above one that explains.
              */}
             <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-center">
-              {EXAMPLE_PR_URL ? (
-                <>
-                  <Button
-                    asChild
-                    variant="primary"
-                    size="lg"
-                    className="w-full sm:w-auto"
-                  >
-                    <a
-                      href={EXAMPLE_PR_URL}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                    >
-                      <GitPullRequest aria-hidden="true" />
-                      See the pull request it opened
-                    </a>
-                  </Button>
-                  <Button
-                    asChild
-                    variant="secondary"
-                    size="lg"
-                    className="w-full sm:w-auto"
-                  >
-                    <Link href="/docs#install">Read the docs</Link>
-                  </Button>
-                </>
-              ) : (
-                <>
-                  {/*
-                   * Two actions, both real, and the filled one is the product.
-                   *
-                   * There was one — "Read the docs" — because the pull request
-                   * it used to point at was a 404 for everyone but its owner.
-                   * Documentation is not the thing being sold, and the hosted
-                   * app is: sign-up is open, public repositories are
-                   * self-serve, and `APP_URL` is where that happens. The docs
-                   * keep the outline variant, which is the reference
-                   * template's arrangement and also the honest ranking.
-                   */}
-                  <Button
-                    asChild
-                    variant="primary"
-                    size="lg"
-                    className="w-full sm:w-auto"
-                  >
-                    <a href={APP_URL}>Start a run</a>
-                  </Button>
-                  <Button
-                    asChild
-                    variant="secondary"
-                    size="lg"
-                    className="w-full sm:w-auto"
-                  >
-                    <Link href="/docs#install">Read the docs</Link>
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/*
-           * The terminal path, demoted on purpose.
-           *
-           * `npx @localize-infra/cli init` installs and runs, but it does not
-           * translate anything until it is pointed at an API the reader runs
-           * themselves. DESIGN.md §4.5.3 demotes an action that cannot finish
-           * on its own, which is why this sits in a quiet panel saying what it
-           * needs rather than taking the filled button.
-           */}
-          {/*
-           * Two arrangements, because the tiers are genuinely different
-           * problems rather than one problem at two sizes.
-           *
-           * At xl this is a column beside the headline: panel chrome, label
-           * above, command and note stacked. It costs nothing vertically —
-           * measured at 1280 the left block is 366px and this is 150px, so it
-           * sits inside the space the argument already occupies.
-           *
-           * From 1024 to 1279 it cannot be a column at all. The left column
-           * needs 584px (the width at which the 68px display headline breaks
-           * in two) and the command box needs ~448px not to truncate, which is
-           * 1064px before the gap — against a 976px container. Measured, not
-           * guessed. So it stacks, and as a stacked block it was costing
-           * 32px of gap plus 116px of height: the entire 148px by which this
-           * tier's hero exceeded 1280's, pushing the run that much further
-           * below the fold.
-           *
-           * Stacked it is therefore a strip, not a block — command and note
-           * side by side, no label, because a heading on a control sitting
-           * directly beneath the actions it belongs to is a label for
-           * something already obvious.
-           */}
-          <div className="mt-10 w-full max-w-[34rem] rounded-lg border border-line bg-surface/60 p-4 text-start">
-            {/* `text-eyebrow`, which carries its own 0.14em. The hand-written
-                tracking this replaced was a seventh copy of a value the scale
-                already defines (§3.3), and packages/ui's type-scale test
-                enumerates the two files allowed to do that. */}
-            <p className="text-eyebrow font-medium uppercase text-tertiary">
-              From your terminal
-            </p>
-            {/*
-              Stacked at every width, which it should have been all along.
-
-              This read `sm:flex-row … xl:flex-col`: a row from 640 to 1279,
-              then a column again. The panel is capped at `max-w-[34rem]` and
-              the command inside it at `max-w-md`, so the row never had more
-              than ~80px left for the sentence beside it — measured at 768,
-              where it wrapped at three words a line. A row that only fits
-              because nothing else is in it is not a row.
-            */}
-            <div className="mt-3 flex flex-col gap-3">
-              <div className="w-full">
-                <CopyCommand command={INSTALL_COMMAND} />
-              </div>
-              {/* Both halves of this sentence come from CLI_PUBLISHED_TO_NPM,
-                  which /docs also reads. It was prose in two places about one
-                  external fact, which is one place that gets forgotten. */}
-              <p className="text-small leading-6 text-tertiary">
-                {!CLI_PUBLISHED_TO_NPM
-                  ? 'Not published to npm yet — today it runs from a clone. '
-                  : CLI_PERSONAL_TOKENS_LIVE
-                    ? 'It runs against our hosted API with a personal token from your workspace. '
-                    : 'It needs an API you run yourself — ours is not open to the CLI. '}
-                <Link
-                  href="/docs#install"
-                  className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              <Button
+                asChild
+                variant="primary"
+                size="lg"
+                className="w-full sm:w-auto"
+              >
+                <a href={APP_URL}>Connect your repository</a>
+              </Button>
+              <Button
+                asChild
+                variant="secondary"
+                size="lg"
+                className="w-full sm:w-auto"
+              >
+                <a
+                  href={EXAMPLE_CYCLE.pull.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
                 >
-                  Install guide
-                </Link>
-                .
-              </p>
+                  <GitPullRequest aria-hidden="true" />
+                  See a real check
+                </a>
+              </Button>
             </div>
+
+            {/* Three steps, named because the product names them. A visitor
+                clicking the action above lands on `/[org]/start`, which opens
+                exactly one of them at a time; saying so here means the first
+                screen is the one that was promised. */}
+            <p className="mt-4 text-small leading-6 text-tertiary">
+              Create a workspace, connect GitHub, get your first health check.
+              Public repositories are free.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* The run, on its own ground. Full-bleed and dark: this is the one
+      {/* The cycle, on its own ground. Full-bleed and dark: this is the one
           moment the page asks the reader to stop and look at the product. */}
       <section
-        aria-label="A run against a real repository"
+        aria-label="A check Layersky posted on a real pull request"
         className="border-y border-subtle bg-primary"
       >
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
-          <RunArtifact />
+          <CheckCycle />
 
           {/*
-           * Where the run came from, said exactly.
+           * Where it came from, said exactly — and this time followable.
            *
-           * This read "A real run against a real repository, linked above.
-           * Nothing on this page is a mockup." The link was a 404 for every
-           * visitor, and the second sentence was broader than anything on the
-           * page can prove — the "Close" example further down is illustrative.
+           * The band used to carry run `b6fbbf11`, whose pull request is in a
+           * private repository; the caption had to end "that repository is
+           * private, so the pull request cannot be linked". The i18next
+           * fixture is public, so the sentence that replaces it is a link.
            */}
           <p className="mt-4 text-small text-inverse/60">
-            Run b6fbbf11, started from the hosted app on 29 August 2026 against
-            our fixture repository. Its pull request was merged.
-            {EXAMPLE_PR_URL
-              ? ' The pull request is linked above.'
-              : ' That repository is private, so the pull request cannot be linked; every value above is copied from it.'}
+            Pull request{' '}
+            <a
+              href={EXAMPLE_CYCLE.pull.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="rounded-sm text-inverse underline underline-offset-2 decoration-inverse/40 hover:decoration-inverse focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              #{EXAMPLE_CYCLE.pull.number}
+            </a>{' '}
+            on our i18next fixture, which is public. Every value above is read
+            from the check runs on those two commits.
           </p>
         </div>
       </section>
