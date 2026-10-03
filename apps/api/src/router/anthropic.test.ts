@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAnthropicProvider } from './anthropic.js';
+import type { TokenUsage } from './types.js';
 
 /**
  * The request body, pinned.
@@ -95,15 +96,17 @@ describe('createAnthropicProvider settings', () => {
 
 describe('usage reporting', () => {
   it('reports what the API charged, thinking separately', async () => {
-    const seen: unknown[] = [];
     captureBody();
-    await createAnthropicProvider('k', {
-      onUsage: (u) => seen.push(u),
-    }).translate(request, 'claude-sonnet-5');
+    const result = await createAnthropicProvider('k').translate(
+      request,
+      'claude-sonnet-5',
+    );
 
-    expect(seen).toEqual([
-      { inputTokens: 11, outputTokens: 22, thinkingTokens: 3 },
-    ]);
+    expect(result.usage).toEqual({
+      inputTokens: 11,
+      outputTokens: 22,
+      thinkingTokens: 3,
+    });
   });
 
   it('still reports usage for a response that returned no text', async () => {
@@ -127,14 +130,16 @@ describe('usage reporting', () => {
       })),
     );
 
-    const seen: { outputTokens: number }[] = [];
-    await expect(
-      createAnthropicProvider('k', {
-        onUsage: (u) => seen.push(u),
-      }).translate(request, 'claude-sonnet-5'),
-    ).rejects.toThrow(/no usable text content block/);
+    const thrown = await createAnthropicProvider('k')
+      .translate(request, 'claude-sonnet-5')
+      .then(
+        () => null,
+        (e: unknown) => e as { message: string; usage?: TokenUsage | null },
+      );
 
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.outputTokens).toBe(4096);
+    expect(thrown?.message).toMatch(/no usable text content block/);
+    // Carried on the error rather than reported beside it: the caller that
+    // handles the failure is the only one placed to charge for it.
+    expect(thrown?.usage?.outputTokens).toBe(4096);
   });
 });

@@ -13,11 +13,12 @@ import {
   splitDevHoldout,
   splitIntoUnpairedGroups,
 } from '../../../packages/eval/src/index.js';
+import { createAnthropicProvider } from '../src/router/anthropic.js';
 import {
-  type AnthropicUsage,
-  createAnthropicProvider,
-} from '../src/router/anthropic.js';
-import { handleTranslateBatch } from '../src/translate/handler.js';
+  type UsageTotals,
+  handleTranslateBatch,
+  usageOfFailedBatch,
+} from '../src/translate/handler.js';
 
 /**
  * Does the agent escalate when it should, and stay quiet when it should not?
@@ -85,6 +86,8 @@ function byLocale(cases: AmbiguityCase[]): Map<string, AmbiguityCase[]> {
 async function runGroup(
   group: AmbiguityCase[],
   provider: ReturnType<typeof createAnthropicProvider>,
+  /** Accumulated across groups, so the cost line covers the whole run. */
+  add: (usage: UsageTotals | null) => void,
 ): Promise<AmbiguityObservation[]> {
   const observations: AmbiguityObservation[] = [];
 
@@ -104,6 +107,7 @@ async function runGroup(
         provider,
         MODEL_ID,
       );
+      add(result.usage);
 
       const returned = new Map(result.translations.map((t) => [t.key, t]));
       for (const entry of entries) {
@@ -130,6 +134,8 @@ async function runGroup(
         });
       }
     } catch (error) {
+      // A group that failed outright still paid for its attempts.
+      add(usageOfFailedBatch(error));
       const message = error instanceof Error ? error.message : String(error);
       for (const entry of entries) {
         observations.push({
@@ -153,30 +159,47 @@ async function main() {
 
   const cases = selectSubset(buildAmbiguityCases());
   const [groupA, groupB] = splitIntoUnpairedGroups(cases);
-  const usage: AnthropicUsage[] = [];
+  /*
+   * Summed off what `handleTranslateBatch` returns rather than a hook on the
+   * provider. Same number here, and the only shape production can use: a
+   * callback wired at construction cannot attribute cost to a request, and
+   * the provider is built once at startup.
+   */
+  let totals: UsageTotals = {
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    thinkingTokens: 0,
+  };
+  const add = (u: UsageTotals | null) => {
+    if (!u) return;
+    totals = {
+      requests: totals.requests + u.requests,
+      inputTokens: totals.inputTokens + u.inputTokens,
+      outputTokens: totals.outputTokens + u.outputTokens,
+      thinkingTokens: totals.thinkingTokens + u.thinkingTokens,
+    };
+  };
   /*
    * No settings overrides. `createAnthropicProvider` already defaults to the
    * production values — effort "low", 8192 max tokens — and passing them again
    * here would let this measurement drift from production silently the next
    * time one of them changes.
    */
-  const provider = createAnthropicProvider(apiKey, {
-    onUsage: (u) => usage.push(u),
-  });
+  const provider = createAnthropicProvider(apiKey);
 
   console.log(
     `ambiguity corpus [${SUBSET}]: ${cases.length} cases, ${cases.length / 2} pairs, model ${MODEL_ID}`,
   );
   console.log('group A');
-  const a = await runGroup(groupA, provider);
+  const a = await runGroup(groupA, provider, add);
   console.log('group B');
-  const b = await runGroup(groupB, provider);
+  const b = await runGroup(groupB, provider, add);
 
   const observations = [...a, ...b];
   const score = scoreAmbiguity(cases, observations);
 
-  const inputTokens = usage.reduce((sum, u) => sum + (u.inputTokens ?? 0), 0);
-  const outputTokens = usage.reduce((sum, u) => sum + (u.outputTokens ?? 0), 0);
+  const { inputTokens, outputTokens } = totals;
 
   mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(

@@ -8,6 +8,7 @@ import {
   planCorrection,
 } from './correct';
 import {
+  NO_MODEL_USAGE,
   type TranslateResult,
   UNEXPLAINED,
   buildCorrection,
@@ -63,6 +64,7 @@ const answers = (
   })),
   missingKeys: extra.missingKeys ?? [],
   failures: extra.failures ?? [],
+  usage: extra.usage ?? null,
 });
 
 describe('planCorrection', () => {
@@ -492,6 +494,137 @@ describe('buildCorrection, charged before the model', () => {
     expect(outcome.charged).toBe(1);
   });
 
+  /*
+   * A refusal costs nothing, and the tally has to say so.
+   *
+   * This is the branch most likely to be read as free without being checked:
+   * the plan refuses before anything is charged, no model is reached, and the
+   * outcome's `usage` must be zero rather than absent. A `null` here would
+   * reach `record_model_usage` and be written as a row claiming a request.
+   */
+  it('reports no model usage when nothing was correctable', async () => {
+    const outcome = await buildCorrection({
+      ...twoLocales,
+      report: report([
+        {
+          kind: 'placeholder-mismatch',
+          key: 'app.new',
+          locale: 'fr',
+          detail: 'drops {{name}}',
+        },
+      ]),
+      charge: async () => {},
+      translate: echo,
+    });
+    expect(outcome.refusal).toMatch(/safe to correct automatically/i);
+    expect(outcome.usage).toEqual(NO_MODEL_USAGE);
+  });
+
+  it('reports no model usage when the charge refuses', async () => {
+    const outcome = await buildCorrection({
+      ...twoLocales,
+      charge: async () => {
+        throw new Error('This workspace has reached today’s ceiling.');
+      },
+      translate: echo,
+    });
+    expect(outcome.usage).toEqual(NO_MODEL_USAGE);
+  });
+
+  /*
+   * N keys x M locales, attributed to one workspace.
+   *
+   * Two keys into two languages is **two** model calls, not four and not one:
+   * `/v1/translate` takes a batch per locale, so the call count follows the
+   * languages and the token count follows everything. A tally that followed
+   * the pairs instead would double what the correction is said to have cost.
+   */
+  it('sums what every locale consumed, across keys and languages', async () => {
+    const outcome = await buildCorrection({
+      ...twoLocales,
+      report: report([
+        missing('app.new', 'fr'),
+        missing('app.new', 'de'),
+        missing('app.old', 'fr'),
+        missing('app.old', 'de'),
+      ]),
+      catalogues: {
+        en: { 'app.new': 'Save changes', 'app.old': 'Discard' },
+        fr: {},
+        de: {},
+      },
+      usedKeys: ['app.new', 'app.old'],
+      translate: async (args) =>
+        answers(
+          args.strings.map((s) => ({
+            key: s.key,
+            text: `[${args.targetLocale}] ${s.text}`,
+          })),
+          {
+            usage: {
+              requests: 1,
+              inputTokens: 300,
+              outputTokens: 120,
+              thinkingTokens: 40,
+            },
+          },
+        ),
+    });
+
+    expect(outcome.requested).toBe(4);
+    expect(outcome.applied).toHaveLength(4);
+    expect(outcome.usage).toEqual({
+      requests: 2,
+      inputTokens: 600,
+      outputTokens: 240,
+      thinkingTokens: 80,
+    });
+  });
+
+  /*
+   * A locale whose request failed is the most expensive outcome there is — up
+   * to three paid attempts, nothing delivered — and it used to be the one
+   * recorded as free. The route answers 502 with the tally, `translateBatch`
+   * puts it on the error, and this is the end of that chain.
+   */
+  it('counts what a failed locale spent', async () => {
+    const outcome = await buildCorrection({
+      ...twoLocales,
+      translate: async (args) => {
+        if (args.targetLocale === 'de') {
+          throw Object.assign(new Error('502 Bad Gateway'), {
+            usage: {
+              requests: 3,
+              inputTokens: 900,
+              outputTokens: 0,
+              thinkingTokens: 0,
+            },
+          });
+        }
+        return answers(
+          args.strings.map((s) => ({ key: s.key, text: `fr ${s.text}` })),
+          {
+            usage: {
+              requests: 1,
+              inputTokens: 300,
+              outputTokens: 120,
+              thinkingTokens: 0,
+            },
+          },
+        );
+      },
+    });
+
+    expect(outcome.applied).toHaveLength(1);
+    expect(outcome.rejected).toHaveLength(1);
+    expect(outcome.usage).toEqual({
+      requests: 4,
+      inputTokens: 1200,
+      outputTokens: 120,
+      thinkingTokens: 0,
+    });
+  });
+
   // Omitting the hook spends unmetered. Only tests do that, and this pins it
   // so a production caller that forgets is a visible difference, not a default.
   it('reports nothing charged when no charge was supplied', async () => {
@@ -519,6 +652,7 @@ describe('correctionBody', () => {
         requested: 2,
         leftAlone: 2,
         charged: 2,
+        usage: NO_MODEL_USAGE,
         refusal: null,
       },
     });

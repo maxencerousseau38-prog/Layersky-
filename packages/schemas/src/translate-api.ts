@@ -101,10 +101,39 @@ export type ChunkFailure = z.infer<typeof ChunkFailureSchema>;
  * older client and a newer API keep working in both directions. A caller that
  * ignores it sees exactly what it saw before.
  */
+/**
+ * What the model calls behind one request consumed.
+ *
+ * Optional and defaulted, so a deployment that does not report it and a client
+ * that ignores it both keep working — the same compatibility rule `failures`
+ * follows. `requests` is model calls, which is **not** one per API request:
+ * one request becomes one call per chunk, and up to three when a chunk is
+ * retried.
+ *
+ * Tokens, never money. Vendor rates change and differ per model; converting is
+ * arithmetic the reader does with today's rate, and a dollar figure frozen into
+ * a response is wrong the moment the rate moves with nothing to say which rate
+ * produced it.
+ */
+export const TokenUsageSchema = z.object({
+  requests: z.number().int().min(0),
+  inputTokens: z.number().int().min(0),
+  outputTokens: z.number().int().min(0),
+  /** A subset of `outputTokens`, not an addition to it. */
+  thinkingTokens: z.number().int().min(0),
+});
+export type TokenUsage = z.infer<typeof TokenUsageSchema>;
+
 export const TranslateBatchResponseSchema = z.object({
   translations: z.array(TranslatedStringSchema),
   missingKeys: z.array(z.string()),
   failures: z.array(ChunkFailureSchema).default([]),
+  usage: TokenUsageSchema.default({
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    thinkingTokens: 0,
+  }),
 });
 export type TranslateBatchResponse = z.infer<
   typeof TranslateBatchResponseSchema

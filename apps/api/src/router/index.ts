@@ -1,8 +1,13 @@
 import { createAnthropicProvider } from './anthropic.js';
 import { createOpenAiProvider } from './openai.js';
-import type { Provider, TranslateRequest } from './types.js';
+import type { Provider, TranslateRequest, TranslateResult } from './types.js';
 
-export type { Provider, TranslateRequest } from './types.js';
+export type {
+  Provider,
+  TokenUsage,
+  TranslateRequest,
+  TranslateResult,
+} from './types.js';
 
 export type ProviderName = 'anthropic' | 'openai';
 
@@ -76,6 +81,6 @@ export async function translate(
   req: TranslateRequest,
   provider: Provider,
   modelId: string,
-): Promise<string> {
+): Promise<TranslateResult> {
   return provider.translate(req, modelId);
 }

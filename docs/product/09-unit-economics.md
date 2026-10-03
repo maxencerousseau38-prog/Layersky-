@@ -393,3 +393,138 @@ hypotheses.
 
 Neither is a reason to delay the caps. The pair allowances above are sound
 whatever the price turns out to be, because they are derived from cost.
+
+---
+
+## Addendum, 2026-10-03: the guardrail is a different cost, and it is measured
+
+Everything above prices the **legacy pipeline** — extract from source,
+translate, open a pull request. It is still correct for that path. It is not
+the path the product now leads with, and the new one has a different cost
+shape, measured here rather than extrapolated.
+
+The guardrail is `PR → analyse → GitHub Check → safe correction → corrective
+PR`. Two facts about it decide the economics, and both come from reading the
+code rather than from a model:
+
+**The Check costs nothing.** `packages/core/src/i18n` reads the catalogues and
+`packages/eval/src/audit` judges them. No model is called on that path, so a
+repository that only ever gets checks — which is every repository whose pull
+requests touch no catalogue, and every delivery whose findings are all
+`placeholder-mismatch` — costs zero inference. This is not a rounding claim;
+there is no call site.
+
+**The correction sends no context.** `translateBatch` in
+`apps/web/src/lib/i18n/correct-github.ts` sends `filePath: ''`,
+`componentName: null`, `surroundingCode: ''`, because a catalogue entry
+genuinely has none of those. Every figure above was measured on strings that
+carried all three. The prompt is therefore smaller and the per-string cost is
+lower — and the fixed part of a call is a far larger share of it.
+
+### Measured, 2026-10-03
+
+`apps/api/eval/correction-cost.ts`, against `claude-sonnet-5` at the
+production defaults (`effort: low`, 8192 max tokens), sending the
+`localize-infra-fixture-i18next` English catalogue in the exact shape the
+correction sends, into `de`:
+
+| Strings in the call | Input | Output | Thinking | Cost | Per string |
+|---|---|---|---|---|---|
+| 1 | 1,627 | 44 | 0 | **$0.005541** | $0.005541 |
+| 4 | 1,808 | 180 | 0 | **$0.008124** | $0.002031 |
+| 14 | 2,438 | 1,372 | 267 | **$0.027894** | $0.001992 |
+
+Three points, not one, because the cost is **not** proportional to the
+strings. Input is linear and output is not:
+
+```
+input  = 1,563 + 62 × strings        (fits all three points to within 0.3%)
+output = 44 at n=1, 45/string at n=4, 98/string at n=14
+
+cost   = $0.004689            fixed, paid once per call
+       + $0.000186 × strings  input
+       + $0.00068–$0.00147 × strings   output, depending on the strings
+```
+
+The fixed part is ~1,563 input tokens of system prompt and instructions, paid
+once per call whatever the call carries. **It is 85% of a one-string call.**
+The output spread is content: a plural or a placeholder costs more than
+`"Home"`, and the 14-string call spent 267 tokens thinking where the two
+smaller ones spent none.
+
+### The number that matters is not the marginal one
+
+**One model call per locale.** `buildCorrection` loops the locales and calls
+`/v1/translate` once each, so the fixed cost is paid **per language**, not per
+correction. And the guardrail's characteristic correction is *one key that
+somebody forgot to translate*:
+
+| Correction | Calls | Cost | Per pair |
+|---|---|---|---|
+| 1 key × 6 locales (the real fixture case) | 6 | **$0.0332** | $0.00554 |
+| 5 keys × 6 locales | 6 | **$0.0540** | $0.00180 |
+| 40 keys × 1 locale (the ceiling, cheapest shape) | 1 | **$0.0709** | $0.00177 |
+| 40 keys × 40 locales (the ceiling, worst shape) | 40 | **$0.2216** | $0.00554 |
+
+Rows one and four are measured directly — both are calls of one string. Rows
+two and three extrapolate the per-string output rate from the 4- and
+14-string measurements, and are marked as estimates for that reason.
+
+So the guardrail's real unit cost is **$0.0055 per string-locale pair**, not
+$0.00155 — **3.6× the figure above** — because its corrections are small and
+small corrections are all prompt. The $0.00155 is approached only by a
+correction big enough to amortise its own prompt, and `MAX_CORRECTION_UNITS`
+is 40.
+
+### Worst case, bounded by the guardrails that already exist
+
+`MAX_CORRECTION_UNITS = 40` caps one delivery. `MAX_ATTEMPTS = 3` caps the
+retries, and a retried chunk is a paid call. `api_limits()` caps the day:
+
+| Bound | Value | Where |
+|---|---|---|
+| Units per correction | 40 | `MAX_CORRECTION_UNITS` |
+| Model calls per locale | 3 | `MAX_ATTEMPTS` |
+| Pull requests per day | 50 | `api_limits().prs_per_day` |
+| String-locale pairs per day | 5,000 | `api_limits().strings_per_day` |
+
+- **Most expensive single correction**: 40 locales × 3 attempts × $0.0055 =
+  **$0.665**, and it delivers nothing — every attempt failed. The tally still
+  records it, which is the point of counting requests rather than results.
+- **Most expensive successful correction**: 40 locales × $0.0055 = **$0.222**.
+- **Most expensive day for one workspace**: the pull-request ceiling binds
+  first, not the string ceiling. 50 corrections × $0.222 = **$11.08/day**, so
+  **$332/month** for a workspace that saturates its ceiling every day of the
+  month. The 5,000-pair ceiling is never reached on that path: 50 × 40 = 2,000.
+
+That $332 is the number a plan has to survive, and it is an abuse ceiling, not
+a forecast. A real repository producing 50 maximal corrections a day every day
+is not a customer, it is an incident.
+
+### A plausible workspace
+
+A team merging 40 pull requests a month, a fifth of which forget a translation,
+into 6 languages, one or two keys each:
+
+```
+8 corrections × 6 calls × ~$0.0064  ≈  $0.31 / month
+```
+
+Checks on the other 32 cost nothing. **Under $0.35 a month in inference.** The
+legacy pipeline's $0.72 typical figure above still applies to whoever uses that
+path, and the two add rather than replace.
+
+### What this is still missing, and it is the honest gap
+
+**No production correction has yet been recorded.** The instrumentation exists
+— `/v1/translate` returns a `usage` tally, `buildCorrection` sums it across
+locales including the ones that failed, and `record_model_usage` writes it onto
+the existing `api_usage_daily` row — and it is proven by unit tests and by
+`supabase/tests/model-usage.sql` against the production function. But the
+figures in this addendum were measured against the real model from this
+repository's own code, not read back out of a workspace's row. The first time
+those two numbers can be compared is the first production correction after
+`apps/api` and `apps/web` carry this change.
+
+Until then: the **cost** is measured, the **attribution** is tested, and the
+**reconciliation** is not done.

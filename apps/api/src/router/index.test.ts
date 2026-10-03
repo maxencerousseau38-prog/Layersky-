@@ -18,17 +18,17 @@ describe('translate', () => {
   it('delegates to the given provider with the given modelId', async () => {
     const fakeProvider: Provider = {
       name: 'anthropic',
-      translate: vi.fn(
-        async (_req: TranslateRequest, modelId: string) =>
-          `translated-by-${modelId}`,
-      ),
+      translate: vi.fn(async (_req: TranslateRequest, modelId: string) => ({
+        text: `translated-by-${modelId}`,
+        usage: null,
+      })),
     };
     const result = await translate(
       { systemPrompt: 'sys', userPrompt: 'Paste' },
       fakeProvider,
       'claude-sonnet-5',
     );
-    expect(result).toBe('translated-by-claude-sonnet-5');
+    expect(result.text).toBe('translated-by-claude-sonnet-5');
     expect(fakeProvider.translate).toHaveBeenCalledWith(
       { systemPrompt: 'sys', userPrompt: 'Paste' },
       'claude-sonnet-5',

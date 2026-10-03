@@ -74,8 +74,68 @@ export interface CorrectionOutcome {
    * called. Zero when nothing was charged, which is also zero spent.
    */
   charged: number;
+  /**
+   * What the model calls consumed, summed over every locale — the ones that
+   * answered and the ones that failed. Zero requests means no model was
+   * reached, which is what a refusal costs.
+   */
+  usage: ModelUsage;
   /** Set when nothing was written at all; null when some of it was. */
   refusal: string | null;
+}
+
+/**
+ * What a set of model calls consumed.
+ *
+ * Carried out of the correction rather than recorded inside it, for the same
+ * reason `charge` is a parameter: this file knows nothing about databases. The
+ * webhook writes it, because the webhook is where the organization is known.
+ *
+ * `requests` counts calls that reached a provider, retries and failures
+ * included — they were paid for. The token figures can be zero while
+ * `requests` is not, which is what a provider reporting no usage looks like;
+ * the two disagreeing is the signal, not an error to smooth over.
+ */
+export interface ModelUsage {
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  thinkingTokens: number;
+}
+
+export const NO_MODEL_USAGE: ModelUsage = {
+  requests: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  thinkingTokens: 0,
+};
+
+/** Sum two tallies. Absent usage adds nothing, which is not the same as zero. */
+export function addModelUsage(
+  total: ModelUsage,
+  next: ModelUsage | null | undefined,
+): ModelUsage {
+  if (!next) return total;
+  return {
+    requests: total.requests + next.requests,
+    inputTokens: total.inputTokens + next.inputTokens,
+    outputTokens: total.outputTokens + next.outputTokens,
+    thinkingTokens: total.thinkingTokens + next.thinkingTokens,
+  };
+}
+
+/**
+ * The usage a thrown translation error carried.
+ *
+ * A locale whose every chunk failed is the most expensive outcome there is —
+ * up to three paid attempts per chunk and nothing delivered. `/v1/translate`
+ * answers 502 with the tally, `translateBatch` puts it on the error, and this
+ * reads it back. Without it the worst case would be the only one recorded as
+ * free.
+ */
+export function usageOfError(error: unknown): ModelUsage | null {
+  const carried = (error as { usage?: ModelUsage } | null)?.usage;
+  return carried && typeof carried.requests === 'number' ? carried : null;
 }
 
 /** What `/v1/translate` answers, in full. */
@@ -90,6 +150,8 @@ export interface TranslateResult {
   missingKeys: string[];
   /** Chunks the route gave up on, with the error verbatim. */
   failures: { keys: string[]; attempts: number; error: string }[];
+  /** What the call consumed. Null from a route or a stub that reports none. */
+  usage?: ModelUsage | null;
 }
 
 export type TranslateFn = (args: {
@@ -214,6 +276,14 @@ export async function buildCorrection(args: {
     return out;
   };
 
+  /*
+   * Read by `outcome` from this scope rather than passed in, so no return path
+   * can forget it. There are five of them, three of which are refusals, and a
+   * refusal reporting spend it did not make — or a failure reporting none —
+   * are both wrong in the direction that matters for a price.
+   */
+  let spent: ModelUsage = NO_MODEL_USAGE;
+
   const outcome = (partial: {
     files: CorrectionFile[];
     applied: (CorrectionUnit & { text: string })[];
@@ -227,6 +297,7 @@ export async function buildCorrection(args: {
     requested: plan.units.length,
     leftAlone: plan.leftAlone.length,
     charged: partial.charged,
+    usage: spent,
     refusal: partial.refusal,
   });
 
@@ -299,7 +370,11 @@ export async function buildCorrection(args: {
         targetLocale: locale,
         strings: units.map((u) => ({ key: u.key, text: u.sourceText })),
       });
+      spent = addModelUsage(spent, answer.usage);
     } catch (error) {
+      // Before the reason, because a locale that failed still spent. The
+      // route answers 502 with the tally and `translateBatch` carries it here.
+      spent = addModelUsage(spent, usageOfError(error));
       /*
        * One locale's request failing is one locale's problem. It used to end
        * the whole correction, so a fault on the third of six took the other
