@@ -54,6 +54,7 @@ const GROUPS: Array<{
     links: [
       { href: '/terms', label: 'Terms' },
       { href: '/privacy', label: 'Privacy' },
+      { href: '/dpa', label: 'Data processing' },
       { href: '/contact', label: 'Contact & support' },
     ],
   },

@@ -5,6 +5,7 @@ import {
   GITHUB_REPO_URL,
   LEGAL_LAST_UPDATED,
   OPERATOR,
+  SUPPORT_EMAIL,
 } from '@/lib/constants';
 import { StateRule } from '@localize-infra/ui';
 import type { Metadata } from 'next';
@@ -42,22 +43,52 @@ export default function ContactPage() {
       <LegalPage updated={LEGAL_LAST_UPDATED}>
         <LegalSection id="channel" title="Where to write">
           <p>
+            In public,{' '}
             <a
               href={CONTACT_URL}
               target="_blank"
               rel="noreferrer noopener"
               className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
-              Open an issue on GitHub
+              open an issue on GitHub
             </a>
-            . That is the whole list. There is no support address, no chat, no
-            ticketing system and no phone number, and none is coming until
-            somebody is actually using this.
+            . That is the right place for a bug, a repository layout the check
+            does not understand, or a question whose answer helps the next
+            person too.
           </p>
+          {SUPPORT_EMAIL === null ? (
+            <p>
+              <strong>In private, nowhere yet.</strong> No support address is
+              published because none exists, and printing one that receives no
+              mail would be worse than admitting the gap — the first person to
+              find out would be somebody who had already trusted it with
+              something they could not post in public.
+            </p>
+          ) : (
+            <p>
+              In private,{' '}
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
+                className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                {SUPPORT_EMAIL}
+              </a>
+              . Use it for anything you cannot put on a public page: a data
+              request, an error quoting a private repository, or anything under{' '}
+              <Link
+                href="/dpa"
+                className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                the data processing agreement
+              </Link>
+              .
+            </p>
+          )}
           <p>
-            {OPERATOR}. One person reads it, in one timezone, with no committed
-            response time. An issue may be answered the same hour or the
-            following week.
+            {OPERATOR}. One person reads both, in one timezone, with no
+            committed response time. A message may be answered the same hour or
+            the following week. There is no chat, no ticketing system and no
+            phone number.
           </p>
         </LegalSection>
 
@@ -88,7 +119,10 @@ export default function ContactPage() {
           />
         </LegalSection>
 
-        <LegalSection id="not-for" title="What it is not good for">
+        <LegalSection
+          id="not-for"
+          title="What the public tracker is not good for"
+        >
           <StateRule tone="degraded" className="ps-4">
             <p className="text-body font-medium text-primary">
               Anything confidential.
@@ -96,16 +130,31 @@ export default function ContactPage() {
             <p className="mt-2 text-small leading-6 text-secondary">
               GitHub issues are public and indexed. Do not put a private
               repository’s source, a token, an error containing a key, or a
-              personal data request into one. There is currently no private
-              channel to use instead, which is a real limitation and is also
-              stated on{' '}
-              <Link
-                href="/privacy#gaps"
-                className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              >
-                the privacy page
-              </Link>
-              .
+              personal data request into one.{' '}
+              {SUPPORT_EMAIL === null ? (
+                <>
+                  There is currently no private channel to use instead, which is
+                  a real limitation and is also stated on{' '}
+                  <Link
+                    href="/privacy#gaps"
+                    className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  >
+                    the privacy page
+                  </Link>
+                  .
+                </>
+              ) : (
+                <>
+                  Send those to{' '}
+                  <a
+                    href={`mailto:${SUPPORT_EMAIL}`}
+                    className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  >
+                    {SUPPORT_EMAIL}
+                  </a>{' '}
+                  instead.
+                </>
+              )}
             </p>
           </StateRule>
           <p>

@@ -2,6 +2,7 @@ import { PageHeader } from '@/components/page-header';
 import { CLI_PERSONAL_TOKENS_LIVE } from '@/lib/constants';
 import { Badge, StateRule } from '@localize-infra/ui';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/security' },
@@ -323,6 +324,25 @@ export default function SecurityPage() {
           <p className="mt-3 max-w-[62ch] text-body leading-6 text-secondary">
             Every third party that receives any part of your data, what they
             get, and where they process it.
+          </p>
+          {/*
+           * The notice period is stated here because this is the page the
+           * commitment is made *about*. /dpa promises 30 days' notice on this
+           * table before a new sub-processor is used; a page carrying that
+           * obligation and not knowing it is how the obligation gets missed.
+           */}
+          <p className="mt-3 max-w-[62ch] text-body leading-6 text-secondary">
+            A new one appears here <strong>30 days before it is used</strong>.
+            This page is in a public git repository, so the commit that adds a
+            name carries its own date and you do not have to take our word for
+            when it changed. That notice period is part of{' '}
+            <Link
+              href="/dpa#subprocessors"
+              className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              the data processing agreement
+            </Link>
+            .
           </p>
 
           <div className="mt-8 overflow-x-auto">
