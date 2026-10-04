@@ -358,5 +358,15 @@ acceptance at all.
    permissions were edited and which can no longer post a check is a silently
    broken correction loop.
 
-Both reads need a JWT signed with `GITHUB_APP_PRIVATE_KEY_PATH`; `gh api`
-answers 401 for them, because it authenticates as a user.
+Steps 2 to 4 are one command, because both reads need a JWT signed with
+`GITHUB_APP_PRIVATE_KEY_PATH` and `gh api` answers 401 for them — it
+authenticates as a user:
+
+```sh
+node scripts/github-app-permissions.mjs
+```
+
+It prints what the App asks for and what each installation holds, and exits
+non-zero while they disagree or while a permission nothing in this repository
+uses is still granted. **Today it exits 1** and names the two. Run it again
+after saving the form; the run that exits 0 is the one that closes this.

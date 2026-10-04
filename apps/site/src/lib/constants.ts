@@ -92,19 +92,45 @@ export const EXAMPLE_CYCLE = {
 export const SUPPORTED_I18N_LIBRARY = 'i18next';
 
 /**
- * The only contact channel this product actually has.
+ * The public channel: an issue anybody can read.
  *
- * Public GitHub issues, and that is the whole truth of it. No support address
- * is published because none exists, and a page that printed one would be
- * making the first promise this site breaks — the constraint everywhere else
- * here is that a claim must be true today.
- *
- * The consequence is stated rather than hidden on /contact and /privacy: an
- * issue is public, so it is the wrong place for anything confidential, and a
- * data request that needs privacy has nowhere to go yet. That is a real gap
- * before a first external team, not a stylistic one.
+ * Good for a bug, a repository layout the check does not understand, a
+ * question about behaviour. Wrong for anything confidential, which is what
+ * `SUPPORT_EMAIL` below exists for.
  */
 export const CONTACT_URL = `${GITHUB_REPO_URL}/issues`;
+
+/**
+ * The private channel.
+ *
+ * **One constant, four pages.** A public issue tracker is the wrong place for
+ * a GDPR request, a private repository's error output, or a signed data
+ * processing agreement, so /contact, /privacy, /terms and /dpa all read this
+ * rather than each spelling out an address. Two of those are legal documents;
+ * an address that appears in one of them and not another is the kind of drift
+ * a customer finds first.
+ *
+ * It stays `string | null` now that it is set, and that is deliberate. The
+ * null branch is what every page shows if this mailbox is ever retired, and
+ * leaving the type as a bare `string` would mean deleting four fallbacks the
+ * day it is needed — which is the day nobody has time to write them.
+ *
+ * A dedicated alias rather than the owner's personal address. That was
+ * offered and declined: an address given to a customer in a contract is one
+ * you cannot take back, and a personal mailbox on an indexed page is a
+ * different decision from a support alias.
+ *
+ * **Both branches are rendered and both are tested** (`e2e/legal.spec.ts`),
+ * because this repository has already shipped a text branch nobody had ever
+ * seen on screen — the `CLI_PERSONAL_TOKENS_LIVE` copy, wrong for weeks in
+ * the branch that was not live. The suite asserts whichever branch is live
+ * and the absence of the other, so turning this back to null is caught too.
+ *
+ * Set on 2026-10-03. **What no test here can check is that the mailbox is
+ * read.** A support address nobody opens is the failure this constant was
+ * null to avoid, moved one step along.
+ */
+export const SUPPORT_EMAIL: string | null = 'layersky.contact@gmail.com';
 
 /**
  * Who is behind this, in the only terms the repository can support.

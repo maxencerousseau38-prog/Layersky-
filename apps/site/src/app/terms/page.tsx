@@ -5,6 +5,7 @@ import {
   HOSTED_API_LIMITS,
   LEGAL_LAST_UPDATED,
   OPERATOR,
+  SUPPORT_EMAIL,
 } from '@/lib/constants';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -230,18 +231,63 @@ export default function TermsPage() {
           </p>
         </LegalSection>
 
+        <LegalSection id="data" title="Personal data">
+          <p>
+            What is held about you and why is on{' '}
+            <Link
+              href="/privacy"
+              className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              the privacy page
+            </Link>
+            . If you are deploying this across a team, the processing we carry
+            out on your behalf is set out in{' '}
+            <Link
+              href="/dpa"
+              className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              the data processing agreement
+            </Link>
+            , which forms part of these terms and wins where the two disagree
+            about personal data.
+          </p>
+        </LegalSection>
+
         <LegalSection id="contact" title="Contact">
           <p>
             Questions about these terms go to{' '}
-            <a
-              href={CONTACT_URL}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            >
-              the public issue tracker
-            </a>
-            , which is the only channel that exists.{' '}
+            {SUPPORT_EMAIL === null ? (
+              <>
+                <a
+                  href={CONTACT_URL}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  the public issue tracker
+                </a>
+                , which is the only channel that exists.{' '}
+              </>
+            ) : (
+              <>
+                <a
+                  href={`mailto:${SUPPORT_EMAIL}`}
+                  className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  {SUPPORT_EMAIL}
+                </a>
+                , or to{' '}
+                <a
+                  href={CONTACT_URL}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  the public issue tracker
+                </a>{' '}
+                if the answer would help somebody else.{' '}
+              </>
+            )}
             <Link
               href="/contact"
               className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"

@@ -1,6 +1,11 @@
 import { LegalList, LegalPage, LegalSection } from '@/components/legal-prose';
 import { PageHeader } from '@/components/page-header';
-import { CONTACT_URL, LEGAL_LAST_UPDATED, OPERATOR } from '@/lib/constants';
+import {
+  CONTACT_URL,
+  LEGAL_LAST_UPDATED,
+  OPERATOR,
+  SUPPORT_EMAIL,
+} from '@/lib/constants';
 import { StateRule } from '@localize-infra/ui';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -9,7 +14,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/privacy' },
   title: 'Privacy',
   description:
-    'What personal data Layersky holds, where it is stored, who else processes it, and the two gaps you should know about before installing it.',
+    'What personal data Layersky holds, where it is stored, who else processes it, where to send a request, and what is still missing.',
 };
 
 /**
@@ -22,11 +27,12 @@ export const metadata: Metadata = {
  * for — and points at that page rather than restating it badly. Two documents
  * describing one set of facts is how one of them goes stale.
  *
- * **Two gaps are stated rather than papered over**, because both are real and
- * both matter before a first external team installs this: there is no private
- * contact channel for a data request, and no data processing agreement is
- * offered. Writing "contact our DPO" or "a DPA is available on request" would
- * be inventing a commitment, which is the one thing this site does not do.
+ * **This page used to name two gaps**: no private contact channel for a data
+ * request, and no data processing agreement. The second is closed — /dpa sets
+ * out the processing this page summarises, offered as it stands rather than
+ * "available on request", which is the promise the earlier version refused to
+ * make. The first closes with `SUPPORT_EMAIL`, and both of its branches are
+ * rendered here rather than one being written and never seen.
  */
 export default function PrivacyPage() {
   return (
@@ -34,7 +40,7 @@ export default function PrivacyPage() {
       <PageHeader
         eyebrow="Legal"
         title="Privacy"
-        lede="Layersky holds very little about you, and most of what it touches is your source code rather than your person. This page covers both, and names two gaps you should weigh before installing it."
+        lede="Layersky holds very little about you, and most of what it touches is your source code rather than your person. This page covers both, and says where a request goes."
       />
 
       <LegalPage updated={LEGAL_LAST_UPDATED}>
@@ -47,7 +53,7 @@ export default function PrivacyPage() {
               href="#gaps"
               className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
-              the gaps section
+              where a request goes
             </Link>
             .
           </p>
@@ -222,53 +228,94 @@ export default function PrivacyPage() {
           </p>
         </LegalSection>
 
-        <LegalSection id="gaps" title="Two gaps, stated plainly">
-          <StateRule tone="degraded" className="ps-4">
-            <p className="text-body font-medium text-primary">
-              There is no private channel for a data request.
-            </p>
-            <p className="mt-2 text-small leading-6 text-secondary">
-              The only contact this project has is a public issue tracker, and a
-              public issue is the wrong place to put a request that names you.
-              Until a private address exists, a right that needs confidentiality
-              cannot be exercised properly here. That is a reason to weigh
-              before putting this on a repository that matters.
-            </p>
-          </StateRule>
-          <StateRule tone="degraded" className="mt-4 ps-4">
-            <p className="text-body font-medium text-primary">
-              No data processing agreement is offered.
-            </p>
-            <p className="mt-2 text-small leading-6 text-secondary">
-              If you are a company deploying this across a team, you would
-              normally need a DPA naming the sub-processors and the transfer
-              mechanism for the United States leg. None is published, and
-              claiming one “is available on request” when nothing has been
-              drafted would be the kind of promise this site exists not to make.
-              The facts a DPA would be built from are all on{' '}
-              <Link
-                href="/security"
+        <LegalSection
+          id="gaps"
+          title="Where to send a request, and what is still missing"
+        >
+          {/*
+           * This section used to be headed "Two gaps, stated plainly" and the
+           * second of them — no data processing agreement — is now closed:
+           * /dpa exists and describes the processing this page summarises.
+           * The first is closed by one constant.
+           */}
+          {SUPPORT_EMAIL === null ? (
+            <StateRule tone="degraded" className="ps-4">
+              <p className="text-body font-medium text-primary">
+                There is no private channel for a data request.
+              </p>
+              <p className="mt-2 text-small leading-6 text-secondary">
+                The only contact this project has is a public issue tracker, and
+                a public issue is the wrong place to put a request that names
+                you. Until a private address exists, a right that needs
+                confidentiality cannot be exercised properly here. That is a
+                reason to weigh before putting this on a repository that
+                matters.
+              </p>
+            </StateRule>
+          ) : (
+            <p>
+              Send a request to{' '}
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
                 className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
               >
-                /security
-              </Link>
-              .
+                {SUPPORT_EMAIL}
+              </a>
+              , not to the public issue tracker. One person reads it, with no
+              committed response time beyond the statutory window.
             </p>
-          </StateRule>
+          )}
+          <p>
+            If you are deploying this across a team, the processing is set out
+            in full in{' '}
+            <Link
+              href="/dpa"
+              className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              the data processing agreement
+            </Link>{' '}
+            — sub-processors, the transfer outside the EU, the security measures
+            that exist, and the ones that do not. It is offered as it stands
+            rather than negotiated, and it says so.
+          </p>
         </LegalSection>
 
         <LegalSection id="contact" title="Contact">
           <p>
-            Everything goes through{' '}
-            <a
-              href={CONTACT_URL}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            >
-              the public issue tracker
-            </a>
-            , with the caveat above.{' '}
+            {SUPPORT_EMAIL === null ? (
+              <>
+                Everything goes through{' '}
+                <a
+                  href={CONTACT_URL}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  the public issue tracker
+                </a>
+                , with the caveat above.{' '}
+              </>
+            ) : (
+              <>
+                Anything about your personal data goes to{' '}
+                <a
+                  href={`mailto:${SUPPORT_EMAIL}`}
+                  className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  {SUPPORT_EMAIL}
+                </a>
+                ; bugs and questions about behaviour belong in{' '}
+                <a
+                  href={CONTACT_URL}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  the public issue tracker
+                </a>
+                .{' '}
+              </>
+            )}
             <Link
               href="/contact"
               className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"

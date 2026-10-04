@@ -23,6 +23,7 @@ export const PUBLIC_ROUTES = [
   { path: '/terms', priority: 0.3 },
   { path: '/privacy', priority: 0.3 },
   { path: '/contact', priority: 0.3 },
+  { path: '/dpa', priority: 0.3 },
 ] as const;
 
 /**
