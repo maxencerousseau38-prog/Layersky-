@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { type StageCount, summarisePipeline } from './pipeline.js';
-import { CLOSER_STAGES, isTerminal } from './stages.js';
+import {
+  type StageCount,
+  summarisePipeline,
+  summariseTrack,
+} from './pipeline.js';
+import {
+  CLOSER_STAGES,
+  DESIGN_PARTNER_TRACK,
+  SALES_TRACK,
+  TERMINAL_STAGES,
+  isTerminal,
+} from './stages.js';
 
 const counts = (...rows: StageCount[]) => rows;
 
@@ -108,7 +118,17 @@ describe('summarisePipeline', () => {
     expect(summary.activeTotal).toBe(5);
   });
 
-  it('accounts for every stage exactly once across the three buckets', () => {
+  /*
+   * The invariant narrowed with the function, and deliberately.
+   *
+   * It used to be "every stage in the enum appears exactly once", which held
+   * while one funnel owned every stage. `summarisePipeline` now describes the
+   * sales track only, so the claim is that it covers *that* track plus the
+   * shared terminals — and nothing else leaks in. Asserting the old count
+   * would have been satisfied by putting six design-partner columns in a
+   * sales operator's pipeline.
+   */
+  it('accounts for every sales stage exactly once, and no others', () => {
     const summary = summarisePipeline([]);
     const seen = [
       ...summary.active.map((r) => r.stage),
@@ -116,6 +136,66 @@ describe('summarisePipeline', () => {
       'won' as const,
     ];
     expect(new Set(seen).size).toBe(seen.length);
-    expect(seen.length).toBe(CLOSER_STAGES.length);
+    expect(new Set(seen)).toEqual(
+      new Set([...SALES_TRACK, ...TERMINAL_STAGES]),
+    );
+  });
+
+  it('leaves the design-partner stages out of the sales pipeline', () => {
+    const summary = summarisePipeline([
+      { stage: 'installed', count: 3 },
+      { stage: 'contacted', count: 1 },
+    ]);
+    expect(summary.active.map((r) => r.stage)).not.toContain('installed');
+    // And the count is simply not represented, rather than silently folded
+    // into a neighbouring stage.
+    expect(summary.activeTotal).toBe(1);
+  });
+});
+
+describe('summariseTrack', () => {
+  it('walks the design-partner funnel in its own order', () => {
+    const summary = summariseTrack('design_partner', []);
+    expect(summary.active.map((r) => r.stage)).toEqual(
+      DESIGN_PARTNER_TRACK.slice(0, -1),
+    );
+  });
+
+  /*
+   * `paid` is the design-partner `won`. Hard-coding `won` in the summary
+   * would have left `paid` sitting in `active` — a customer reported as
+   * work in progress — and `won` reading zero forever on this track.
+   */
+  it('reports the last stage of a track as won, not as an active column', () => {
+    const summary = summariseTrack('design_partner', [
+      { stage: 'paid', count: 2 },
+      { stage: 'first_check', count: 1 },
+    ]);
+    expect(summary.won).toBe(2);
+    expect(summary.activeTotal).toBe(1);
+    expect(summary.active.map((r) => r.stage)).not.toContain('paid');
+  });
+
+  it('keeps empty stages, on either track', () => {
+    const summary = summariseTrack('design_partner', [
+      { stage: 'contacted', count: 2 },
+    ]);
+    const installed = summary.active.find((r) => r.stage === 'installed');
+    expect(installed).toEqual({ stage: 'installed', count: 0 });
+  });
+
+  it('shares the terminal breakdown between tracks', () => {
+    const counts = [{ stage: 'not_a_fit' as const, count: 4 }];
+    expect(summariseTrack('design_partner', counts).stopped).toEqual(
+      summariseTrack('sales', counts).stopped,
+    );
+  });
+
+  it('is what summarisePipeline delegates to', () => {
+    const counts = [
+      { stage: 'contacted' as const, count: 2 },
+      { stage: 'lost' as const, count: 1 },
+    ];
+    expect(summarisePipeline(counts)).toEqual(summariseTrack('sales', counts));
   });
 });

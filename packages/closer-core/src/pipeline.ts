@@ -1,8 +1,9 @@
 import {
   CLOSER_STAGES,
   type CloserStage,
-  funnelPosition,
+  type CloserTrack,
   isTerminal,
+  trackStages,
 } from './stages.js';
 
 /**
@@ -40,7 +41,21 @@ export interface PipelineSummary {
  * three `interested` reads as a working pipeline instead of as the question it
  * should raise. Zero is a measurement.
  */
-export function summarisePipeline(
+/**
+ * One track's funnel, in that track's own order.
+ *
+ * Replaces the walk over `CLOSER_STAGES` this function used to do directly.
+ * That walk was correct while every stage belonged to one funnel; with two
+ * motions sharing an enum it would show a sales operator six empty
+ * design-partner columns, and a design-partner operator the whole sales tail.
+ *
+ * It also no longer sorts. `trackStages` returns the funnel in order, where
+ * the previous version recovered order from `indexOf` into the enum — which
+ * is exactly the coupling that made appending the six new values the only
+ * safe way to add them.
+ */
+export function summariseTrack(
+  track: CloserTrack,
   counts: readonly StageCount[],
 ): PipelineSummary {
   const byStage = new Map<CloserStage, number>();
@@ -48,13 +63,18 @@ export function summarisePipeline(
     byStage.set(row.stage, (byStage.get(row.stage) ?? 0) + row.count);
   }
 
-  const active = CLOSER_STAGES.filter(
-    (stage) => !isTerminal(stage) && stage !== 'won',
-  )
-    .map((stage) => ({ stage, count: byStage.get(stage) ?? 0 }))
-    .sort(
-      (a, b) => (funnelPosition(a.stage) ?? 0) - (funnelPosition(b.stage) ?? 0),
-    );
+  const stages = trackStages(track);
+  /*
+   * The last stage of a track is its `won`, and it is reported separately
+   * rather than as the final active column — `paid` for a design partner,
+   * `won` for sales. Hard-coding `won` here would leave `paid` sitting in
+   * `active` and `won` always reading zero on the new track.
+   */
+  const closed = stages[stages.length - 1] as CloserStage;
+
+  const active = stages
+    .filter((stage) => !isTerminal(stage) && stage !== closed)
+    .map((stage) => ({ stage, count: byStage.get(stage) ?? 0 }));
 
   /*
    * Terminal stages sort by count, not by the enum.
@@ -79,6 +99,20 @@ export function summarisePipeline(
      * customers among "active" would say the work is unfinished; counting them
      * among "stopped" would file success with failure.
      */
-    won: byStage.get('won') ?? 0,
+    won: byStage.get(closed) ?? 0,
   };
+}
+
+/**
+ * The sales funnel, unchanged.
+ *
+ * Kept as its own export because `apps/web` calls it and `pipeline.test.ts`
+ * asserts its output. It is now one line over `summariseTrack` and produces
+ * exactly what it produced before tracks existed: the sales stages in sales
+ * order, the shared terminals, and `won`.
+ */
+export function summarisePipeline(
+  counts: readonly StageCount[],
+): PipelineSummary {
+  return summariseTrack('sales', counts);
 }
