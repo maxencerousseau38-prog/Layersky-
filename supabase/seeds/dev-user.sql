@@ -489,3 +489,216 @@ begin
   values (proj.organization_id, 'Seeded development workspace')
   on conflict (organization_id) do nothing;
 end $$;
+
+/* ------------------------------------------------------------------ *
+ * Closer — a pipeline with something in it
+ * ------------------------------------------------------------------ */
+
+/*
+ * Four leads, on both tracks, written through the real functions.
+ *
+ * Every stage here is set by `closer_set_stage`, never by an UPDATE. That is
+ * not fastidiousness: the function is the only writer, it refuses an edge the
+ * transition table does not contain, and it is what writes
+ * `closer_stage_history` — so a fixture that set `stage` directly would
+ * produce a lead with a stage and no history, a state the product cannot
+ * reach, and the lead sheet would render "no stage change recorded" beside a
+ * stage that plainly changed.
+ *
+ * It also means the loss fixture exercises the lot-5 guards for real: the
+ * `installed → lost` move below is refused outright without a loss reason, and
+ * `installed_never_used` has to be a pair the taxonomy allows at `installed`.
+ *
+ * **One lead exists only to be moved by a test.** `Movable Co` is never
+ * asserted on by the display tests, because `fullyParallel` means a suite that
+ * mutates a row another test reads cannot be made to win the race — the lesson
+ * `workspace.spec.ts` paid for by giving itself its own project.
+ */
+do $$
+declare
+  uid uuid;
+  closer_org uuid;
+  partner_org uuid;
+  company_id uuid;
+  dp public.closer_leads;
+  lost public.closer_leads;
+  sales public.closer_leads;
+  gated public.closer_leads;
+begin
+  select id into uid from auth.users where email = 'acceptance@localize-infra.dev';
+  select organization_id into closer_org from public.closer_workspaces limit 1;
+  if uid is null or closer_org is null then
+    raise notice 'Closer fixtures skipped: no seeded user or workspace';
+    return;
+  end if;
+
+  /*
+   * Re-runnable, which the rest of this block is not.
+   *
+   * `closer_open_lead` refuses a second lead for one company and
+   * `closer_set_stage` refuses a move to the stage a lead is already at, so
+   * replaying this would abort the seed partway — and a seed that aborts
+   * partway is how `closer_workspaces` went years without ever being inserted.
+   */
+  if exists (
+    select 1 from public.closer_companies
+     where organization_id = closer_org and domain = 'partnerco.test'
+  ) then
+    raise notice 'Closer fixtures already present';
+    return;
+  end if;
+
+  /*
+   * The prospect's own workspace, which is a *different tenant*.
+   *
+   * This is what makes the activation fixture honest. The milestones are
+   * derived from another organization's `organization_github_installations`
+   * and `i18n_checks` rows, read through a `service_role` function that checks
+   * the operator against the lead's workspace — so a fixture inside the
+   * operator's own organization would prove nothing about the boundary being
+   * crossed.
+   *
+   * `closer_activation_candidates` matches `account_login` against the first
+   * path segment of the company's `repository` and excludes the lead's own
+   * organization. Hence `partnerco` here and `partnerco/app` below.
+   */
+  insert into public.organizations (name, slug, created_by)
+  values ('Partner Co', 'partner-co', uid)
+  on conflict (slug) do nothing;
+  select id into partner_org from public.organizations where slug = 'partner-co';
+
+  insert into public.organization_github_installations
+    (organization_id, installation_id, account_login, account_type,
+     connected_by, connected_at)
+  values (partner_org, 991001, 'partnerco', 'Organization', uid,
+          now() - interval '12 days')
+  on conflict (organization_id) do nothing;
+
+  /*
+   * Three checks, on three pull requests, on three different days.
+   *
+   * `repeated_usage` needs two of each (`ACTIVATION_THRESHOLDS`), so three
+   * clears it with a margin — a fixture sitting exactly on a threshold starts
+   * failing silently the day the threshold moves.
+   */
+  insert into public.i18n_checks
+    (organization_id, repository_owner, repository_name, pull_number, head_sha,
+     conclusion, title, summary, correction_applied, created_at)
+  values
+    (partner_org, 'partnerco', 'app', 41, 'aaa1111', 'neutral',
+     '2 i18n problems', 'Checked 1 key against 6 languages', 0,
+     now() - interval '9 days'),
+    (partner_org, 'partnerco', 'app', 42, 'bbb2222', 'neutral',
+     '1 i18n problem', 'Checked 2 keys against 6 languages', 5,
+     now() - interval '5 days'),
+    (partner_org, 'partnerco', 'app', 43, 'ccc3333', 'success',
+     'No i18n problems', 'Checked 3 keys against 6 languages', 0,
+     now() - interval '2 days');
+
+  -- Claims before the role switch: afterwards the GUC is no longer settable
+  -- and auth.uid() stays null, which every function below reads.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', uid, 'role','authenticated')::text, true);
+  perform set_config('role','authenticated',true);
+
+  company_id := (public.closer_upsert_company(
+    closer_org, 'Partner Co', 'partnerco.test', 'github_repository',
+    'https://github.com/partnerco/app', 'partnerco/app',
+    array['typescript'], array['en','fr','de'], 18)).id;
+  dp := public.closer_open_lead(company_id);
+
+  company_id := (public.closer_upsert_company(
+    closer_org, 'Noisy Co', 'noisyco.test', 'github_repository',
+    'https://github.com/noisyco/web', 'noisyco/web',
+    array['typescript'], array['en','es'], 11)).id;
+  lost := public.closer_open_lead(company_id);
+
+  company_id := (public.closer_upsert_company(
+    closer_org, 'Sales Co', 'salesco.test', 'github_repository',
+    'https://github.com/salesco/site', 'salesco/site',
+    array['typescript'], array['en','it'], 30)).id;
+  sales := public.closer_open_lead(company_id);
+
+  company_id := (public.closer_upsert_company(
+    closer_org, 'Movable Co', 'movableco.test', 'github_repository',
+    'https://github.com/movableco/app', 'movableco/app',
+    array['typescript'], array['en','ja'], 7)).id;
+  perform public.closer_open_lead(company_id);
+
+  /*
+   * One lead stopped at `ready_for_outreach`, and it is the only place the
+   * approval gate can be observed.
+   *
+   * `ready_for_outreach → outreach_approved` is a real edge, so this is the one
+   * stage where the lead sheet has something to withhold. Asserted anywhere
+   * else, "Approved is not offered" would pass because the graph has no such
+   * edge from there — a refusal credited to the gate that actually came from
+   * the transition table, which is how the first draft of `closer-track.sql`
+   * fooled itself.
+   */
+  company_id := (public.closer_upsert_company(
+    closer_org, 'Gated Co', 'gatedco.test', 'github_repository',
+    'https://github.com/gatedco/app', 'gatedco/app',
+    array['typescript'], array['en','nl'], 14)).id;
+  gated := public.closer_open_lead(company_id);
+
+  /*
+   * `closer_leads.track` defaults to `design_partner` — the motion this
+   * product is running now — so only the sales lead is switched, and that
+   * needs the owner because the table has no UPDATE policy.
+   */
+  perform set_config('role','postgres',true);
+  update public.closer_leads set track = 'sales' where id = sales.id;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', uid, 'role','authenticated')::text, true);
+  perform set_config('role','authenticated',true);
+
+  -- A design partner that installed and came back.
+  dp := public.closer_set_stage(dp.id,'qualified','public signals support a fit');
+  dp := public.closer_set_stage(dp.id,'researched','brief written from the repository');
+  dp := public.closer_set_stage(dp.id,'ready_for_outreach','a contact and an angle exist');
+  dp := public.closer_set_stage(dp.id,'outreach_approved','a person approved the message');
+  dp := public.closer_set_stage(dp.id,'contacted','sent by hand');
+  dp := public.closer_set_stage(dp.id,'replied','they answered');
+  dp := public.closer_set_stage(dp.id,'interested','the answer was positive');
+  dp := public.closer_set_stage(dp.id,'installed','they connected the GitHub App');
+
+  -- One that installed and never used it: the most informative failure.
+  lost := public.closer_set_stage(lost.id,'qualified','public signals support a fit');
+  lost := public.closer_set_stage(lost.id,'researched','brief written');
+  lost := public.closer_set_stage(lost.id,'ready_for_outreach','angle holds');
+  lost := public.closer_set_stage(lost.id,'outreach_approved','a person approved');
+  lost := public.closer_set_stage(lost.id,'contacted','sent by hand');
+  lost := public.closer_set_stage(lost.id,'replied','they answered');
+  lost := public.closer_set_stage(lost.id,'interested','the answer was positive');
+  lost := public.closer_set_stage(lost.id,'installed','they connected the GitHub App');
+  lost := public.closer_set_stage(
+    lost.id,'lost','connected it and no check ever ran on a pull request',
+    'installed_never_used');
+
+  -- Up to the gate and no further.
+  gated := public.closer_set_stage(gated.id,'qualified','public signals support a fit');
+  gated := public.closer_set_stage(gated.id,'researched','brief written');
+  gated := public.closer_set_stage(gated.id,'ready_for_outreach','a contact and an angle exist');
+
+  -- And one on the original motion, to show the two coexist.
+  sales := public.closer_set_stage(sales.id,'researching','gathering evidence');
+  sales := public.closer_set_stage(sales.id,'qualified','the evidence supports a fit');
+  sales := public.closer_set_stage(sales.id,'ready_for_outreach','a contact and an angle exist');
+  sales := public.closer_set_stage(sales.id,'outreach_approved','a person approved the message');
+  sales := public.closer_set_stage(sales.id,'contacted','sent by hand');
+
+  /*
+   * The link, written by the function rather than by an UPDATE.
+   *
+   * `closer_link_activation` refuses an organization that is not already a
+   * candidate — so it checks the installation, the repository owner, that it is
+   * not the operator's own workspace, and that no other lead claims it. Setting
+   * the column directly would skip the only security boundary this subsystem
+   * has, and the fixture would stop proving that boundary holds.
+   *
+   * `service_role` only, so this runs as the owner.
+   */
+  perform set_config('role','postgres',true);
+  perform public.closer_link_activation(dp.id, partner_org, uid);
+end $$;

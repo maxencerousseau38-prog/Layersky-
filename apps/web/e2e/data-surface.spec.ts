@@ -750,12 +750,18 @@ test.describe('Closer', () => {
   });
 
   /*
-   * Companies, before anything has been discovered.
+   * Companies, and the empty state reached through a filter.
    *
-   * The empty state is the assertion that matters at this stage: the screen
-   * must say "nothing discovered yet" rather than show a demonstration. Whether
-   * discovery works is settled against GitHub, not here — an e2e test that
-   * searched the real API would be slow, rate-limited and different every run.
+   * **This asserted "nothing discovered yet" against an empty pipeline until
+   * the Closer fixtures arrived.** The seed now opens five leads, so that
+   * sentence is gone from the unfiltered page — correctly, because something
+   * has been discovered. The claim worth keeping is that the screen says so
+   * plainly rather than showing a demonstration, and a filter that matches
+   * nothing is where an empty pipeline can still be observed.
+   *
+   * Whether discovery works is settled against GitHub, not here — an e2e test
+   * that searched the real API would be slow, rate-limited and different every
+   * run.
    */
   test('lists companies, and says plainly when there are none', async ({
     page,
@@ -772,7 +778,11 @@ test.describe('Closer', () => {
       page.getByText(/ten public repositories per run/i),
     ).toBeVisible();
 
-    await expect(page.getByText(/nothing discovered yet/i)).toBeVisible();
+    // Something is there, so the empty state must not be.
+    await expect(page.getByText(/nothing discovered yet/i)).toHaveCount(0);
+
+    await open(page, '/closer/companies?track=sales&stage=trial');
+    await expect(page.getByText(/no lead matches this filter/i)).toBeVisible();
 
     // Both tabs, now that Companies is built rather than named and inert.
     const nav = page.getByRole('navigation', { name: 'Closer' });

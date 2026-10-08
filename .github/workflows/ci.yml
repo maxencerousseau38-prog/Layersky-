@@ -89,8 +89,20 @@ jobs:
           set -a; . /tmp/supabase.env; set +a
           : "${API_URL:?supabase status emitted no API_URL — see the key list above}"
           : "${ANON_KEY:?supabase status emitted no ANON_KEY — see the key list above}"
+          : "${SERVICE_ROLE_KEY:?supabase status emitted no SERVICE_ROLE_KEY — see the key list above}"
           echo "SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
           echo "SUPABASE_PUBLISHABLE_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+          # The service-role key, which the Closer lead sheet needs.
+          #
+          # Activation milestones are derived from the *prospect's* workspace —
+          # another tenant — so `closer_activation_metrics` is `service_role`
+          # only and `apps/web` establishes authority before calling it. Without
+          # this the panel correctly reports that it cannot be read, and the
+          # test asserting the milestones would be asserting the failure path.
+          #
+          # Still no secret: these keys are fixed and public by design for a
+          # local stack, which is the same reason ANON_KEY is exported here.
+          echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
           echo "DB_URL=$DB_URL" >> "$GITHUB_ENV"
 
       # The guard that makes this job worth adding.
@@ -132,6 +144,22 @@ jobs:
             exit 1
           }
           echo "SUPABASE_URL is set; the database-backed specs will run."
+
+          # The same guard, for the same reason, one variable later.
+          #
+          # closer.spec.ts skips its activation test without this key, because
+          # the panel can then only report that it cannot read. That skip is
+          # correct for a developer and useless in CI: it is exactly the shape
+          # of the gap above, where 48 tests excused themselves and the job
+          # stayed green. A skip nobody is forced to look at is how a proof
+          # becomes decoration.
+          test -n "${SUPABASE_SERVICE_ROLE_KEY:-}" || {
+            echo "SUPABASE_SERVICE_ROLE_KEY is empty. The Closer activation"
+            echo "test would skip itself and this job would pass without ever"
+            echo "having read an activation milestone."
+            exit 1
+          }
+          echo "SUPABASE_SERVICE_ROLE_KEY is set; the activation test will run."
 
       - run: npx playwright install --with-deps chromium
 
