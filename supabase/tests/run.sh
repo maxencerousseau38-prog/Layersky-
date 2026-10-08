@@ -49,7 +49,7 @@ for file in supabase/tests/*.sql; do
   # is missing produces no verdict and is reported as "did not reach its raise"
   # — a failure that looks like a broken script rather than an unregistered one.
   # If you are reading this because of that message, check here first.
-  verdict="$(printf '%s\n' "$output" | grep -oE '(ISOLATION|CLOSER-SUPPRESSION|ROLE-PERMISSIONS|CLI-TOKENS|API-LIMITS|SEED-INTEGRITY|ENTITLEMENTS|MODEL-USAGE|CLOSER-TRACK|CLOSER-ACTIVATION) >>.*' || true)"
+  verdict="$(printf '%s\n' "$output" | grep -oE '(ISOLATION|CLOSER-SUPPRESSION|ROLE-PERMISSIONS|CLI-TOKENS|API-LIMITS|SEED-INTEGRITY|ENTITLEMENTS|MODEL-USAGE|CLOSER-TRACK|CLOSER-ACTIVATION|CLOSER-LOSSES) >>.*' || true)"
   if [ -z "$verdict" ]; then
     echo "   FAIL — no verdict line: the script did not reach its raise."
     printf '%s\n' "$output" | tail -20 | sed 's/^/   /'
