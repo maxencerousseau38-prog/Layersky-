@@ -72,6 +72,24 @@ begin
   lead_a := public.closer_open_lead(c_domain.id);
   lead_b := public.closer_open_lead(c_nodomain.id);
 
+  /*
+   * These fixtures are sales-track leads.
+   *
+   * `closer_leads.track` defaults to `design_partner`, which is the motion
+   * this product runs now. This file is a historical proof about the *sales*
+   * funnel: it walks `researching`, a stage the design-partner track does not
+   * own, so without this the first transition is refused by the track check
+   * and every assertion after it collapses.
+   *
+   * Written explicitly rather than by changing the default. The default
+   * describes the product; this describes the fixture. `postgres` because
+   * `closer_leads` carries a select policy and nothing else — the only writer
+   * is `closer_set_stage`, which deliberately has no way to change a track.
+   */
+  perform set_config('role','postgres',true);
+  update public.closer_leads set track = 'sales' where id = any (array[lead_a.id, lead_b.id]);
+  perform set_config('role','authenticated',true);
+
   /* ---- lead creation ------------------------------------------------ */
 
   ok := (public.closer_open_lead(c_domain.id)).id = lead_a.id;
@@ -188,6 +206,11 @@ begin
     'github_commit','https://github.com/t/e/commits', now());
   lead_late := public.closer_open_lead(c_late.id);
 
+  -- Sales-track fixture, for the reason given at the first one.
+  perform set_config('role','postgres',true);
+  update public.closer_leads set track = 'sales' where id = lead_late.id;
+  perform set_config('role','authenticated',true);
+
   perform public.closer_set_stage(lead_late.id,'researching','Research begins');
   perform public.closer_set_stage(lead_late.id,'qualified','Evidence supports a fit');
   perform public.closer_set_stage(lead_late.id,'ready_for_outreach','A contact and an angle exist');
@@ -234,6 +257,11 @@ begin
     c_early.id,'pain','translation_commit_frequency','7 commits in 90 days',
     'github_commit','https://github.com/t/f/commits', now());
   lead_early := public.closer_open_lead(c_early.id);
+
+  -- Sales-track fixture, for the reason given at the first one.
+  perform set_config('role','postgres',true);
+  update public.closer_leads set track = 'sales' where id = lead_early.id;
+  perform set_config('role','authenticated',true);
 
   perform public.closer_set_stage(lead_early.id,'researching','Research begins');
   perform public.closer_set_stage(lead_early.id,'qualified','Evidence supports a fit');
@@ -334,6 +362,12 @@ begin
   r := r || format('f3-no-caller-supplied-actor-overload=%s(want t); ', ok);
 
   lead_f1 := public.closer_open_lead(c_f1.id);
+
+  -- Sales-track fixture, for the reason given at the first one.
+  perform set_config('role','postgres',true);
+  update public.closer_leads set track = 'sales' where id = lead_f1.id;
+  perform set_config('role','authenticated',true);
+
   perform public.closer_set_stage(lead_f1.id,'researching','Research begins');
   select actor into actor_seen from public.closer_stage_history
    where lead_id = lead_f1.id and to_stage = 'researching';
@@ -459,6 +493,33 @@ begin
   begin perform public.closer_upsert_company(org,'C3ok','c3-unrelated.test.invalid','github_repository','https://github.com/c/3','c/3');
   exception when others then ok := false; end;
   r := r || format('c3-unrelated-company-still-discoverable=%s(want t); ', ok);
+
+  /* ---- the fixtures are, and stay, sales-track ----------------------- */
+  --
+  -- CI found this file the day the design-partner track landed: every lead
+  -- here defaulted to `design_partner` and the first `researching` was
+  -- refused, because that stage belongs to the other motion. The fix is four
+  -- explicit assignments above; this is what stops the ambiguity coming back.
+  --
+  -- Two counts, not one. Asserting only "none is design_partner" would pass
+  -- on an empty table, which is exactly how a future refactor that stopped
+  -- creating leads would look green. The population is pinned first.
+  --
+  -- Five, and the fifth is worth knowing about. The `delete from
+  -- closer_leads` above runs as `authenticated` against a table carrying a
+  -- select policy and nothing else, so RLS makes it a no-op: the row is still
+  -- there. Measured, not assumed. The assertion that follows it still holds —
+  -- `closer_open_lead` refuses because the contact is suppressed — but it
+  -- holds for a different reason than the delete suggests. Left alone here
+  -- because this change is about the track, and rewriting that line would
+  -- change what the file exercises.
+
+  select count(*) into n from public.closer_leads where organization_id = org;
+  r := r || format('fixture-leads=%s(want 5); ', n);
+
+  select count(*) into n from public.closer_leads
+   where organization_id = org and track <> 'sales';
+  r := r || format('fixture-leads-off-sales=%s(want 0); ', n);
 
   raise exception 'CLOSER-SUPPRESSION >> %', r;
 end $$;
