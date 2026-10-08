@@ -6,5 +6,6 @@ export * from './pain.js';
 export * from './scoring.js';
 export * from './design-partner.js';
 export * from './brief.js';
+export * from './activation.js';
 export * from './outreach.js';
 export * from './replies.js';
