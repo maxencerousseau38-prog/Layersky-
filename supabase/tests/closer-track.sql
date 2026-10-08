@@ -129,8 +129,15 @@ begin
    * these stages existed, so every one of them had to be written out by hand
    * — and a missing one would leave a lead stuck at `installed` forever while
    * the funnel reported it as progress.
+   *
+   * **The fourth argument is required here now**, and it is the same sentence
+   * this call already carried in prose. `20261008000200` made a loss reason
+   * mandatory on `lost`, so the free text "installed and never ran a check"
+   * became `installed_never_used` as well — which is the point of that
+   * taxonomy: the reason was always written down, and was never countable.
    */
-  dp := public.closer_set_stage(dp.id,'lost','installed and never ran a check');
+  dp := public.closer_set_stage(dp.id,'lost','installed and never ran a check',
+                                'installed_never_used');
   res := res || format('installed-to-lost=%s(want lost); ', dp.stage);
 
   -- Every one of the six new stages can reach the absorbing state.
