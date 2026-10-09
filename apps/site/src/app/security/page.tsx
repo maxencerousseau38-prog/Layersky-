@@ -89,17 +89,31 @@ const SUBPROCESSORS = [
  * The App's permissions as GitHub reports them for the installation, not as
  * they were intended.
  *
- * This listed two — contents and pull requests — "and nothing else". GitHub
- * reports six. `metadata: read` is granted to every App. The last two are
- * used by no code in this product; they should not be there, and until they
- * are removed from the App's settings this list says they are.
+ * This page has now been wrong about this list in both directions, which is
+ * worth recording because the second error is the less obvious one.
  *
- * **`checks: write` was missing from this list**, which is worse than the two
- * extras it was written to disclose: it is the permission the product's main
- * feature runs on, and a page whose stated job is to list the permissions
- * "as GitHub reports them" was short one. Re-read from `GET /app` and
- * `GET /app/installations/166148995` on 2026-10-03; the installation holds
- * all six.
+ * It began by listing two — contents and pull requests — "and nothing else",
+ * omitting `checks: write`, the permission the product's main feature runs
+ * on. Then it listed six, two of them annotated "to be removed": a candid
+ * disclosure that the App was over-permissioned.
+ *
+ * **Those two were removed, and this list kept declaring them.** `GET /app`
+ * and `GET /app/installations/166148995` both report exactly the four below;
+ * the installation's `updated_at` is 2026-10-03T22:00:29Z, after the reading
+ * that found six. So a page whose stated job is to report what GitHub reports
+ * spent weeks telling customers the App held write access to artifact
+ * metadata that it did not.
+ *
+ * Over-declaring is the safer direction and still false. The lesson is the
+ * one this repository keeps paying for: a disclosure written as pending
+ * outlives the thing it was pending on, because nothing re-reads it. Hence
+ * the test — `e2e/legal.spec.ts` pins this list and refuses any entry
+ * describing itself as surplus, so the next gap has to be closed in the App
+ * rather than annotated here.
+ *
+ * Re-read with `node scripts/github-app-permissions.mjs`, which exits
+ * non-zero when the App, the installation and the product's own usage
+ * disagree. On 2026-10-09 it exits 0.
  */
 const PERMISSIONS: Array<{ scope: string; use: string }> = [
   {
@@ -117,14 +131,6 @@ const PERMISSIONS: Array<{ scope: string; use: string }> = [
   {
     scope: 'metadata: read',
     use: 'granted to every GitHub App; lists the repositories an installation reaches',
-  },
-  {
-    scope: 'artifact_metadata: write',
-    use: 'not used by any code in this product — to be removed',
-  },
-  {
-    scope: 'codespaces_metadata: read',
-    use: 'not used by any code in this product — to be removed',
   },
 ];
 
@@ -431,9 +437,9 @@ export default function SecurityPage() {
             </h2>
             <p className="mt-3 text-body leading-6 text-secondary">
               As GitHub reports them for the installation today, read from the
-              API rather than from our own notes. Two of them are more than the
-              product needs and are listed so that the gap is ours to close
-              rather than yours to discover.
+              API rather than from our own notes. Four, and each one is used:
+              the App previously held two it did not need, and those have been
+              removed rather than explained.
             </p>
             <ul className="mt-5 space-y-2.5 text-body leading-6 text-secondary">
               {PERMISSIONS.map(({ scope, use }) => (
