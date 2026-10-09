@@ -4,8 +4,23 @@
  * Every claim on this site must be verifiable today (see
  * docs/frontend/07-milestones.md, FE-1 risks).
  */
+/*
+ * The repository's current name, which is not the one this held.
+ *
+ * It pointed at `…/localize-infra`, the name before the rename to Layersky.
+ * GitHub still redirects that, so every link worked and nothing failed — a
+ * `curl` showed `301` and then `200`. Two reasons it was worth changing
+ * anyway: the redirect is only kept while nobody else claims the old name,
+ * and this constant is the **public contact channel** (`CONTACT_URL` below is
+ * this plus `/issues`), so a dead redirect would take the one channel a
+ * visitor can reach without an email address.
+ *
+ * Canonical form read from the API rather than typed: `html_url` is
+ * `…/Layersky-`, trailing hyphen included. Both derived URLs were checked for
+ * a direct `200`, with no redirect, before this changed.
+ */
 export const GITHUB_REPO_URL =
-  'https://github.com/maxencerousseau38-prog/localize-infra';
+  'https://github.com/maxencerousseau38-prog/Layersky-';
 
 /**
  * The pull request the landing page's run produced, **when a visitor can open

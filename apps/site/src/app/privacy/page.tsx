@@ -159,11 +159,41 @@ export default function PrivacyPage() {
               },
             ]}
           />
+          {/*
+           * **Two providers, not one, and the condition is what makes it
+           * true.** This said "Source strings go to Anthropic's API" full
+           * stop. `apps/api/src/router/index.ts` declares
+           * `PROVIDER_NAMES = ['anthropic', 'openai']` and spreads the target
+           * locales across whichever the process holds a key for — so an
+           * OpenAI key on the API instance silently adds a second recipient of
+           * source code. /security#subprocessors already carried that
+           * condition verbatim; this page did not, which left the two
+           * disagreeing about who receives customer code.
+           *
+           * Anthropic's training commitment stays attributed to Anthropic.
+           * None is asserted on OpenAI's behalf: that would be a second
+           * company's policy restated from memory, which is the kind of
+           * sentence this page exists not to contain. The sub-processor table
+           * is the single place both are described.
+           */}
           <p>
             Nothing here is used to train a model by us. Source strings go to
             Anthropic’s API, and Anthropic states that it does not train on API
             inputs — that is their commitment rather than ours, and it is stated
             as theirs for that reason.
+          </p>
+          <p>
+            They also go to <strong>OpenAI</strong> when the API instance is
+            configured with an OpenAI key, which is how the code is built: the
+            router sends each target language to whichever provider it holds a
+            key for. Who receives what, and on whose terms, is listed once in{' '}
+            <Link
+              href="/security#subprocessors"
+              className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              the sub-processor table
+            </Link>
+            .
           </p>
         </LegalSection>
 
@@ -178,9 +208,10 @@ export default function PrivacyPage() {
           </p>
           <p>
             Source strings and the code around them are sent to a model provider
-            in the <strong>United States</strong> to be translated. This is a
-            stated gap against our own data-residency goal, not an oversight,
-            and{' '}
+            in the <strong>United States</strong> to be translated — to both of
+            the providers named above when the API instance holds a key for
+            each. This is a stated gap against our own data-residency goal, not
+            an oversight, and{' '}
             <Link
               href="/security#residency"
               className="rounded-sm text-link underline underline-offset-2 hover:text-link-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
@@ -203,10 +234,38 @@ export default function PrivacyPage() {
         </LegalSection>
 
         <LegalSection id="retention" title="How long it is kept">
+          {/*
+           * **Only project deletion is self-serve, and this page used to claim
+           * more.** It said "deleting a workspace removes the lot" beside a
+           * rights section calling deletion self-serve "— delete the project
+           * or the workspace —". The project half is real:
+           * `deleteProject` ships behind an owner-or-admin policy and the
+           * cascade takes its runs, proposals and ambiguities with it. The
+           * workspace half has no surface anywhere in the application, and an
+           * account cannot be deleted at all: `organizations.created_by` is
+           * `on delete restrict`, so a user who owns a workspace cannot be
+           * removed until that workspace is.
+           *
+           * The cascade itself is not in doubt — every table carrying an
+           * `organization_id` declares `on delete cascade` — so what was wrong
+           * was never the effect, only who can trigger it. Saying "ask" is the
+           * accurate version until a surface exists.
+           */}
           <p>
-            Account and workspace data are kept until you delete them. Deleting
-            a project removes its runs, its proposed translations and its
-            recorded ambiguities; deleting a workspace removes the lot.
+            Account and workspace data are kept until they are deleted. Deleting
+            a project is self-serve and removes its runs, its proposed
+            translations and its recorded ambiguities.
+          </p>
+          <p>
+            <strong>
+              Deleting a whole workspace, or an account, is done by request
+            </strong>{' '}
+            — there is no button for either yet.{' '}
+            {SUPPORT_EMAIL === null
+              ? 'With no private address published, there is currently no channel to make that request through either, which is the gap stated at the end of this page.'
+              : 'Ask at the address below and it is done by hand.'}{' '}
+            A workspace takes its projects, runs, proposed translations,
+            recorded ambiguities, GitHub connection and CLI tokens with it.
           </p>
           <p>
             Translations that were merged are in your git history, which is
@@ -219,8 +278,8 @@ export default function PrivacyPage() {
           <p>
             If the GDPR applies to you, you have the rights it gives you:
             access, correction, deletion, restriction, objection and
-            portability. In practice deletion is self-serve — delete the project
-            or the workspace — and the rest requires asking.
+            portability. In practice deleting a project is self-serve; deleting
+            a workspace or an account, and every other right, requires asking.
           </p>
           <p>
             You also have the right to complain to your national supervisory

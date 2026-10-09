@@ -420,9 +420,25 @@ export default function DpaPage() {
         </LegalSection>
 
         <LegalSection id="deletion" title="Return and deletion">
+          {/*
+           * **"Delete the workspace" was an instruction to the reader, and
+           * there is nothing for them to press.** Project deletion is
+           * self-serve; workspace and account deletion exist only as an
+           * operator action, and an account is additionally blocked while it
+           * owns a workspace because `organizations.created_by` is
+           * `on delete restrict`. The cascade is real — every table carrying
+           * an `organization_id` declares `on delete cascade` — so the clause
+           * was wrong about the mechanism, not the outcome.
+           */}
           <p>
-            Delete the workspace and its data goes with it. Nothing has to be
-            exported first, because{' '}
+            On request, the workspace is deleted and its data goes with it:
+            projects, runs, proposed translations, recorded ambiguities, the
+            GitHub connection and CLI tokens. Deleting a single project is
+            self-serve; deleting the workspace or an account is done by hand,
+            because no surface for either exists yet.
+          </p>
+          <p>
+            Nothing has to be exported first, because{' '}
             <strong>there is nothing to export from</strong>: every translation
             that shipped is a commit in your repository and was always yours.
             That is the point of the architecture rather than a clause we are

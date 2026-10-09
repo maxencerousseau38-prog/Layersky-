@@ -172,9 +172,21 @@ export default async function SettingsPage({
               data, where a labelled sample demonstrates the shape honestly.
               This shows controls, and a control that silently fails to save is
               a worse lie than an empty section. */}
+          {/*
+           * **This said "There is no account, organisation or team to
+           * configure", to readers who had all three.** Written before
+           * authentication landed and never revisited: sign-up is open,
+           * workspaces carry roles, and CLI tokens are managed on
+           * `/[org]/tokens`. A signed-in customer reading that it has no
+           * account is the cheapest credibility a product can lose.
+           *
+           * What is still absent is this *surface*, not the concepts — so the
+           * sentence now says which screens do the work today and what has no
+           * home yet.
+           */}
           <NotBuiltYet
             surface="Account settings"
-            blockedBy="There is no account, organisation or team to configure. Profile, notification and API-key settings arrive with authentication."
+            blockedBy="Accounts, workspaces and roles exist — this screen does not. Members and roles are managed per workspace, CLI tokens on the workspace's Tokens page; changing your email or password, and notification preferences, have no surface yet."
             className="max-w-[65ch]"
           />
         </div>
@@ -182,9 +194,20 @@ export default async function SettingsPage({
 
       {active === 'danger' ? (
         <div className="mt-8 max-w-[65ch]">
+          {/*
+           * **"needs both to exist first" was false in both halves.** Projects
+           * and organisations exist, and deleting a project already ships — on
+           * `/[org]/projects/[project]`, owner-or-admin, confirmed by typing
+           * the slug. What has no surface is deleting a *workspace*, which
+           * `/privacy` and `/dpa` now describe as done on request rather than
+           * self-serve.
+           *
+           * No delete control is added here. A destructive button on a screen
+           * whose action does not exist is the lie `NotBuiltYet` is for.
+           */}
           <NotBuiltYet
             surface="The danger zone"
-            blockedBy="Disconnecting a project or deleting an organisation needs both to exist first. Your translations live in your repository either way — nothing here would ever delete them."
+            blockedBy="Deleting a project already lives on the project's own page, where it names what the deletion takes with it. Deleting a whole workspace, or an account, has no surface yet and is done on request — see the privacy page. Your translations live in your repository either way; nothing here would ever delete them."
           />
           <div className="mt-4 flex items-start gap-3 rounded-lg border border-subtle bg-surface px-4 py-3">
             <Lock

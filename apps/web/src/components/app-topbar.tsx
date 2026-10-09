@@ -175,9 +175,14 @@ export function AppTopbar({
         section: 'Help',
         icon: GitBranch,
         keywords: 'source github code',
+        // The current name. This held `…/localize-infra`, which GitHub still
+        // redirects — so it worked, and would stop the day somebody else
+        // claims that name. Fixing only the marketing site's copy of this URL
+        // would have left the product and the site pointing at two different
+        // names for one repository.
         onSelect: () =>
           window.open(
-            'https://github.com/maxencerousseau38-prog/localize-infra',
+            'https://github.com/maxencerousseau38-prog/Layersky-',
             '_blank',
           ),
       },
