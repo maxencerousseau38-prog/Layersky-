@@ -306,29 +306,47 @@ key. The panel only shows it on a workspace with no GitHub link: *Connect
 GitHub* means the key is there, `Missing: SUPABASE_SERVICE_ROLE_KEY` means it is
 not. A workspace that is already connected shows neither.
 
-## The GitHub App's permissions, and the two that should not be there
+## The GitHub App's permissions
 
-`GET /app` reports six, and the installation holds all six:
+`GET /app` and `GET /app/installations/166148995` both report four, and the
+installation holds exactly those:
 
 ```
 checks: write          the i18n check on the commit
 contents: write        read a pull request's files, create a branch, commit
 metadata: read         granted to every App; lists reachable repositories
 pull_requests: write   open the corrective pull request
-artifact_metadata: write    nothing in this repository reads it
-codespaces_metadata: read   nothing in this repository reads it
 ```
 
-Verified on 2026-10-03: `grep -rn "artifact_metadata\|codespaces_metadata"`
-across the whole repository matches only prose about them. They are real
-excess permission on every installation, and `/security` lists them for that
-reason rather than quietly omitting them.
+Re-read with `node scripts/github-app-permissions.mjs`. It prints both sides
+and exits non-zero when they disagree, or when a permission the product never
+calls is granted — so it is a check rather than a report.
+
+**This section used to be titled "and the two that should not be there".**
+`artifact_metadata: write` and `codespaces_metadata: read` were granted and
+called by nothing. They were removed on 2026-10-03; the installation's
+`updated_at` is `2026-10-03T22:00:29Z`, which is how the removal can be dated.
+The procedure below is what verified it, kept because the next permission
+change will need it.
+
+`/security` listed those two for weeks after they were gone, which is the
+mirror-image error and the less visible one — see that page's own comment. A
+disclosure written as *pending* outlives the thing it was pending on.
 
 **There is no API for this.** `PATCH /app` with `default_permissions` answers
 **404** authenticated as the App — the endpoint does not exist. Permissions are
 a form on
-`https://github.com/settings/apps/localize-infra/permissions`, and removing
+`https://github.com/settings/apps/layersky-i18n/permissions`, and changing
 them is a manual step somebody has to take.
+
+**The slug in that URL moves when the App is renamed.** It went from
+`localize-infra` to `layersky-i18n` on 2026-10-09 when the display name became
+"Layersky i18n", and **GitHub kept no redirect**: the old
+`github.com/apps/localize-infra/installations/new` answers 404, measured. So a
+rename is also an edit to `GITHUB_APP_SLUG` (see the variable table above), and
+the two belong in one operation — nothing in the product reads the slug from
+the API at runtime, so a stale variable means "Connect a repository" leads to a
+404 with no error and no failing test.
 
 ### Why this is not the September trap, and how to be sure
 
@@ -340,23 +358,30 @@ which minted a new `installation_id` and broke "Run pipeline" until the row in
 
 That episode was an **addition** (`checks: write` and the `pull_request`
 event). GitHub applies a **narrowing** immediately and asks nobody, because no
-installation is being granted anything. So removing these two should need no
-acceptance at all.
+installation is being granted anything, so removing the two should have needed
+no acceptance at all.
 
-"Should" is not a check. Do it in this order and stop if a step disagrees:
+**It did not, and that is now measured rather than predicted**: the App and the
+installation both reported four, and `updated_at` moved to the moment of the
+save instead of staying frozen the way it did in September.
 
-1. Untick both on the permissions form and save.
-2. `GET /app` — the two are gone from `permissions`.
-3. `GET /app/installations/166148995` — the two are gone from `permissions`,
-   and `checks`, `contents`, `metadata` and `pull_requests` are all still
-   there. **This is the step that matters.** If the installation still lists
-   them, the change is pending acceptance and the narrowing did not apply;
-   leave it pending rather than reinstalling, because a reinstall changes the
-   installation id.
-4. Emit an installation token and confirm it still lists the repositories it
-   should reach, and can still write a check run. An installation whose
+Verify the next change in this order, and stop if a step disagrees:
+
+1. Edit the permissions form and save.
+2. `GET /app` — the change is there.
+3. `GET /app/installations/166148995` — the change is there too, and every
+   permission the product calls is still present. **This is the step that
+   matters.** If the installation still lists the old set, the change is
+   pending acceptance and the narrowing did not apply; leave it pending rather
+   than reinstalling, because a reinstall changes the installation id.
+4. Confirm the installation can still do the work. An installation whose
    permissions were edited and which can no longer post a check is a silently
-   broken correction loop.
+   broken correction loop, and steps 2 and 3 cannot see that.
+
+The script covers steps 2 and 3. Step 4 it cannot assert, and for the
+2026-10-03 narrowing the product answered it instead: `i18n_checks` rows
+written on 2026-10-09 carry a `check_run_id`, so check runs were still being
+published to GitHub six days after the two were removed.
 
 Steps 2 to 4 are one command, because both reads need a JWT signed with
 `GITHUB_APP_PRIVATE_KEY_PATH` and `gh api` answers 401 for them — it

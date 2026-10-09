@@ -7,7 +7,7 @@
  * There is no API for changing an App's permissions. `PATCH /app` with
  * `default_permissions` answers **404** authenticated as the App — not 403,
  * the endpoint does not exist. Permissions are a form at
- * `https://github.com/settings/apps/localize-infra/permissions`, so removing
+ * `https://github.com/settings/apps/layersky-i18n/permissions`, so removing
  * one is a manual step, and the only thing automation can do is tell you
  * whether the step worked.
  *
