@@ -567,10 +567,30 @@ begin
   on conflict (slug) do nothing;
   select id into partner_org from public.organizations where slug = 'partner-co';
 
+  /*
+   * 770001, and the number is not arbitrary.
+   *
+   * `organization_github_installations.installation_id` is unique **globally**
+   * — one installation belongs to one account, and letting two workspaces
+   * claim it would let either act as the other. The seed persists; the proofs
+   * roll back. So a number the seed holds is a number no proof can ever use,
+   * and `entitlements.sql` already uses 991001–991004. Seeded with 991001 this
+   * made that proof fail with "did not reach its raise", which reads as a
+   * broken script rather than as an occupied identifier.
+   *
+   * Third time in this subsystem that a new fixture invalidated an older
+   * proof — after `closer-suppression.sql` in #145 and `closer-track.sql` in
+   * #146. The pattern is the same each time and so is the check that finds it
+   * in one command: grep the new fixture's identifiers against
+   * `supabase/tests/` before adding them.
+   *
+   * 77xxxx is this block's range, chosen because nothing in the repository
+   * used it.
+   */
   insert into public.organization_github_installations
     (organization_id, installation_id, account_login, account_type,
      connected_by, connected_at)
-  values (partner_org, 991001, 'partnerco', 'Organization', uid,
+  values (partner_org, 770001, 'partnerco', 'Organization', uid,
           now() - interval '12 days')
   on conflict (organization_id) do nothing;
 
