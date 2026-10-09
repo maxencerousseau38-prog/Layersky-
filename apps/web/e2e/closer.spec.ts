@@ -153,10 +153,33 @@ test.describe('the lead sheet', () => {
      * success. CI exports the key — the local stack's are public by design —
      * so this skip reaches a developer who has not set one, not the pipeline.
      */
-    test.skip(
-      !process.env.SUPABASE_SERVICE_ROLE_KEY,
-      'No SUPABASE_SERVICE_ROLE_KEY: the activation panel can only report that it cannot read.',
-    );
+    /*
+     * In CI the absence of the key is a **failure**, not a skip.
+     *
+     * The first version skipped unconditionally and CI dutifully skipped it:
+     * the job printed "SUPABASE_SERVICE_ROLE_KEY is set; the activation test
+     * will run" and then did not run it. Both statements were true of
+     * different processes. `npm run test:e2e` goes through turbo, which filters
+     * the environment down to the variables declared under that task in
+     * `turbo.json` — the trap this repository already documents — so the
+     * variable reached the step and not the worker.
+     *
+     * Declaring it in `turbo.json` fixes that instance. This makes the class
+     * impossible: whatever the plumbing does, a CI run without the key fails
+     * here instead of reporting a green suite that proved nothing. The skip
+     * survives for a developer, which is who it was for.
+     */
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      expect(
+        process.env.CI,
+        'SUPABASE_SERVICE_ROLE_KEY did not reach the Playwright worker. In CI this test must run, not skip: skipped, it proves nothing about activation.',
+      ).toBeFalsy();
+
+      test.skip(
+        true,
+        'No SUPABASE_SERVICE_ROLE_KEY: the activation panel can only report that it cannot read.',
+      );
+    }
 
     await openLead(page, 'Partner Co');
 

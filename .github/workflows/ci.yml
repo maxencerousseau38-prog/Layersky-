@@ -147,19 +147,25 @@ jobs:
 
           # The same guard, for the same reason, one variable later.
           #
-          # closer.spec.ts skips its activation test without this key, because
-          # the panel can then only report that it cannot read. That skip is
-          # correct for a developer and useless in CI: it is exactly the shape
-          # of the gap above, where 48 tests excused themselves and the job
-          # stayed green. A skip nobody is forced to look at is how a proof
-          # becomes decoration.
+          # closer.spec.ts needs this key: without it the activation panel can
+          # only report that it cannot read, and the test would be asserting
+          # the failure path.
+          #
+          # **This step checks the job's environment, which is not the same
+          # thing as the worker's.** It once printed "the activation test will
+          # run" immediately before CI skipped that test: `npm run test:e2e`
+          # goes through turbo, which filters the environment to the variables
+          # declared under the task in `turbo.json`, and this one was not among
+          # them. Both messages were true of different processes. So the claim
+          # here is deliberately narrow, and the test itself fails rather than
+          # skips when the variable does not reach it.
           test -n "${SUPABASE_SERVICE_ROLE_KEY:-}" || {
             echo "SUPABASE_SERVICE_ROLE_KEY is empty. The Closer activation"
             echo "test would skip itself and this job would pass without ever"
             echo "having read an activation milestone."
             exit 1
           }
-          echo "SUPABASE_SERVICE_ROLE_KEY is set; the activation test will run."
+          echo "SUPABASE_SERVICE_ROLE_KEY is set in this job; closer.spec.ts fails if it does not reach the worker."
 
       - run: npx playwright install --with-deps chromium
 
