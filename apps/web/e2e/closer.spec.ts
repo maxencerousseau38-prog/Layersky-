@@ -144,30 +144,26 @@ test.describe('the lead sheet', () => {
     page,
   }) => {
     /*
-     * The one test here that needs more than a database.
+     * The one test here that needs more than a database, and in CI a missing
+     * key is a **failure** rather than a skip.
      *
      * Activation is derived from the *prospect's* workspace, so
      * `closer_activation_metrics` is `service_role` only and the panel
      * honestly reports that it cannot be read without the key. Asserting the
      * milestones without it would be asserting the failure path and calling it
-     * success. CI exports the key — the local stack's are public by design —
-     * so this skip reaches a developer who has not set one, not the pipeline.
-     */
-    /*
-     * In CI the absence of the key is a **failure**, not a skip.
+     * success.
      *
      * The first version skipped unconditionally and CI dutifully skipped it:
      * the job printed "SUPABASE_SERVICE_ROLE_KEY is set; the activation test
-     * will run" and then did not run it. Both statements were true of
-     * different processes. `npm run test:e2e` goes through turbo, which filters
-     * the environment down to the variables declared under that task in
-     * `turbo.json` — the trap this repository already documents — so the
-     * variable reached the step and not the worker.
+     * will run" and then did not run it. Both statements were true, of
+     * different processes — `npm run test:e2e` goes through turbo, which
+     * filters the environment to the variables declared under that task in
+     * `turbo.json`, and this one was not among them. It reached the step and
+     * not the worker.
      *
-     * Declaring it in `turbo.json` fixes that instance. This makes the class
-     * impossible: whatever the plumbing does, a CI run without the key fails
-     * here instead of reporting a green suite that proved nothing. The skip
-     * survives for a developer, which is who it was for.
+     * Declaring it in `turbo.json` fixes that instance; failing here makes the
+     * class impossible, whatever the plumbing does later. The skip survives
+     * for a developer, which is who it was for.
      */
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       expect(
@@ -205,12 +201,19 @@ test.describe('the lead sheet', () => {
     );
 
     /*
-     * Scoped to the section, because the Select primitive keeps a hidden
-     * native `<select>` for form submission and its `<option>` text collides
-     * with every stage label on the page. Unscoped, `First check` resolved to
-     * `<option value="first_check">` — present in the DOM, hidden, and
-     * nothing to do with the milestone list.
+     * Scoped to the milestone list, and both narrowings were paid for.
+     *
+     * The section, because the Select primitive keeps a hidden native
+     * `<select>` whose `<option>` text collides with every stage label on the
+     * page: unscoped, `First check` resolved to `<option value="first_check">`.
+     *
+     * Then the list, because the section also carries the derived-stage
+     * sentence — "The rows support **Repeated usage**" — so that one label
+     * appeared twice inside the section and strict mode refused. That second
+     * collision only existed because the panel was working: the sentence
+     * renders solely when a stage was actually derived from the counters.
      */
+    const milestoneRows = activation.getByRole('listitem');
     for (const milestone of [
       'Installed',
       'First check',
@@ -219,9 +222,19 @@ test.describe('the lead sheet', () => {
       'Paid',
     ]) {
       await expect(
-        activation.getByText(milestone, { exact: true }),
+        milestoneRows.getByText(milestone, { exact: true }),
       ).toBeVisible();
     }
+
+    /*
+     * And the derived stage itself, asserted rather than merely worked around.
+     *
+     * `derivedStage` is null unless the chain of milestones was walked and one
+     * of them was reached, so this sentence existing is the positive evidence
+     * that the counters were read — the thing the collision above revealed by
+     * accident.
+     */
+    await expect(activation.getByText(/the rows support/i)).toBeVisible();
 
     // Reached, and the sentence quotes the observation behind it.
     await expect(
