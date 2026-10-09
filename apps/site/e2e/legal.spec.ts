@@ -112,6 +112,83 @@ test('the DPA is linked from the footer', async ({ page }) => {
 });
 
 /*
+ * The GitHub App permissions, exactly the four the App holds.
+ *
+ * This page has been wrong in both directions. It first omitted
+ * `checks: write`, the permission the main feature runs on. Then it listed six
+ * — two annotated "to be removed" — and **kept declaring them after they were
+ * removed**, so a page whose stated job is to report what GitHub reports told
+ * customers the App held write access to artifact metadata that it did not.
+ *
+ * Three assertions, because each catches a different regression:
+ *
+ *   the **count**, so an addition cannot slip in unnamed;
+ *   the **four scopes**, so a removal of a real one is caught too — the
+ *     `checks: write` omission is the precedent;
+ *   the **absence of a surplus annotation**, which is the failure that
+ *     actually happened. A disclosure written as pending outlives the thing it
+ *     was pending on, because nothing re-reads it. If the App ever holds more
+ *     than it uses again, this test says to close the gap in the App's
+ *     settings rather than to document it here.
+ *
+ * `scripts/github-app-permissions.mjs` is the authority and cannot run here:
+ * it needs a JWT signed with the App's private key, which CI has no business
+ * holding. So this pins the page against a list a human re-read from
+ * `GET /app` and `GET /app/installations/<id>`, and the script is what proves
+ * that list — run it when this test fails.
+ */
+const GITHUB_APP_PERMISSIONS = [
+  'contents: write',
+  'pull_requests: write',
+  'checks: write',
+  'metadata: read',
+];
+
+test('the security page lists exactly the permissions the App holds', async ({
+  page,
+}) => {
+  await page.goto('/security');
+
+  const list = page
+    .locator('section[aria-labelledby="github-perms"] li')
+    .filter({ has: page.locator('code') });
+
+  await expect(
+    list,
+    'the permission list is not four entries long',
+  ).toHaveCount(GITHUB_APP_PERMISSIONS.length);
+
+  const rendered = (await list.allTextContents()).map((t) =>
+    t.replace(/\s+/g, ' ').trim(),
+  );
+
+  for (const scope of GITHUB_APP_PERMISSIONS) {
+    expect(
+      rendered.some((row) => row.includes(scope)),
+      `/security never names ${scope}`,
+    ).toBe(true);
+  }
+
+  // The two that were removed from the App must not be described as held.
+  const body = ((await page.locator('main').textContent()) ?? '').replace(
+    /\s+/g,
+    ' ',
+  );
+  for (const gone of ['artifact_metadata', 'codespaces_metadata']) {
+    expect(body, `/security still declares ${gone}`).not.toContain(gone);
+  }
+
+  /*
+   * And no entry confesses to being surplus. "to be removed" is what went
+   * stale: the annotation survived the removal. An over-permissioned App is a
+   * thing to fix in its settings, not a line to add here.
+   */
+  expect(body, '/security declares a permission it does not need').not.toMatch(
+    /to be removed|more than the product needs|not used by any code/i,
+  );
+});
+
+/*
  * Deletion, promised only where a control exists.
  *
  * Both pages told the reader to delete their workspace. Only project deletion

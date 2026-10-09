@@ -147,8 +147,20 @@
   translations », alors que `run_translations` garde chaque proposition ;
   Supabase et Vercel absents des sous-traitants ; deux permissions de la GitHub
   App (`artifact_metadata: write`, `codespaces_metadata: read`) non déclarées et
-  inutilisées. **`/security` les liste désormais telles quelles ; les retirer se
-  fait dans les réglages de l'App, à la main.** `ACCOUNT_BACKEND` reste
+  inutilisées. **Elles ont été retirées depuis, et c'est GitHub qui le dit, pas
+  une note** : `GET /app` et `GET /app/installations/166148995` rapportent
+  exactement quatre permissions — `checks: write`, `contents: write`,
+  `metadata: read`, `pull_requests: write` — et l'`updated_at` de l'installation
+  est au 2026-10-03T22:00:29Z, après la lecture qui en trouvait six.
+  `scripts/github-app-permissions.mjs` rejoue la comparaison et sort en 0.
+  **Le défaut a ensuite changé de sens**, et c'est le moins visible des deux :
+  `/security` a continué de déclarer les deux pendant des semaines après leur
+  retrait, donc une page dont le travail est de rapporter ce que GitHub rapporte
+  affirmait un accès en écriture que l'App n'avait plus. Sur-déclarer est la
+  direction prudente et reste faux. Une divulgation écrite comme « en attente »
+  survit à ce qu'elle attendait, parce que rien ne la relit ; un test de
+  `apps/site/e2e/legal.spec.ts` épingle désormais la liste et refuse toute entrée
+  qui se décrit comme superflue. `ACCOUNT_BACKEND` reste
   `'absent'` : il décrit le site, qui ne lit aucune session, pas le produit.
 
   `/benchmarks` et `/quality` ne contiennent **aucun chiffre écrit à la main** :
