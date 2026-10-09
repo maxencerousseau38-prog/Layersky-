@@ -88,7 +88,29 @@ export default defineConfig({
        * Authentication itself is covered by e2e/auth.spec.ts, which starts its
        * own server with a real database and skips when there is none.
        */
-      env: { SUPABASE_URL: '', SUPABASE_PUBLISHABLE_KEY: '' },
+      /*
+       * All three blanked, not two.
+       *
+       * `SUPABASE_SERVICE_ROLE_KEY` was inherited while the other two were
+       * overridden, so this server's configuration was only mostly stated —
+       * and the one variable escaping the override was the one that bypasses
+       * RLS. Harmless as it stood: with no `SUPABASE_URL` the application is
+       * unconfigured, `/closer/*` answers 404 and no admin client is ever
+       * built. But "stated rather than inherited" is the whole argument for
+       * this block, and a server in this suite quietly holding admin
+       * credentials is a bad thing to leave for the next test to find.
+       *
+       * Nothing here reads it. The specs on this port are a11y, interaction
+       * and perf; every database-backed spec targets 3212, and `auth.setup.ts`
+       * names that port outright. The activation test's own skip reads the
+       * variable from the Playwright process rather than from this server, so
+       * it is unaffected.
+       */
+      env: {
+        SUPABASE_URL: '',
+        SUPABASE_PUBLISHABLE_KEY: '',
+        SUPABASE_SERVICE_ROLE_KEY: '',
+      },
     },
     /*
      * The same build, with a real database, on its own port.

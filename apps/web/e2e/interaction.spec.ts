@@ -426,8 +426,19 @@ test('Closer is not reachable without an entitled workspace', async ({
 }) => {
   // This server runs with no database, so `hasCloser()` can find no row. A 404
   // is the only answer that does not confirm the route exists.
-  const response = await page.goto('/closer');
-  expect(response?.status()).toBe(404);
+  //
+  // Every route under /closer, not only the index. The gate is in the shared
+  // layout, so one 404 is evidence for the others — but the lead sheet arrived
+  // later than this test and a route added outside the layout would be caught
+  // by nothing. A uuid that could not exist, so a 404 can only be the gate.
+  for (const path of [
+    '/closer',
+    '/closer/companies',
+    '/closer/leads/00000000-0000-0000-0000-000000000000',
+  ]) {
+    const response = await page.goto(path);
+    expect(response?.status(), path).toBe(404);
+  }
 
   // And nothing anywhere in the shell points at it.
   await page.goto('/');
