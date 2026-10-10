@@ -13,3 +13,18 @@ export const STORAGE_STATE = 'e2e/.auth/acceptance.json';
 /** The seeded account, verbatim from supabase/seeds/dev-user.sql. */
 export const SEEDED_EMAIL = 'acceptance@localize-infra.dev';
 export const SEEDED_PASSWORD = 'acceptance-test-pw-8chars';
+
+/**
+ * A second seeded identity: authenticated, and outside Closer.
+ *
+ * It owns `intruder-co`, a different organization with no `closer_workspaces`
+ * row, which is what makes it the right subject for the refusal test —
+ * `hasCloser()` reads that table under RLS, so a user whose organizations hold
+ * no row sees nothing and the layout answers 404.
+ *
+ * Also verbatim from supabase/seeds/dev-user.sql. No session is cached for it:
+ * one test signs in, where the shared state exists to spare eighteen tests
+ * from doing so.
+ */
+export const OUTSIDER_EMAIL = 'intruder@localize-infra.dev';
+export const OUTSIDER_PASSWORD = 'intruder-test-pw-8chars';

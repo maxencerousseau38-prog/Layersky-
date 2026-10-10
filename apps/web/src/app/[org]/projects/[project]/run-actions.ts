@@ -19,6 +19,7 @@ import {
   describeRunShortfall,
   readTranslationBudget,
 } from '@/lib/quota/preflight';
+import { recordModelUsage } from '@/lib/quota/usage';
 import { isNextControlFlowError } from '@/lib/runs/control-flow';
 import {
   checkTranslations,
@@ -535,6 +536,43 @@ export async function startRun(
             ),
           };
           keysTranslated += body.translations.length;
+
+          /*
+           * What this call consumed, recorded once, from what the provider
+           * reported.
+           *
+           * `chargeWorkspace` above counted the strings this request *carries*,
+           * before sending, because a ceiling has to be enforceable while the
+           * money is still unspent. This counts the tokens it actually *cost*,
+           * after. Both are needed and neither substitutes for the other —
+           * `apps/web/src/lib/quota/usage.ts` has the full argument.
+           *
+           * **Once per `/v1/translate` call, inside the `toTranslate.length > 0`
+           * guard.** The loop runs per locale, so a six-locale run records six
+           * times and `record_model_usage` sums them (`on conflict … do update
+           * set model_requests = u.model_requests + excluded.model_requests`).
+           * A locale served entirely from `fromCache` never enters this branch,
+           * makes no call, and is therefore never counted — a resumed run must
+           * not re-record what it did not re-buy.
+           *
+           * **Nothing is invented when the provider is silent.**
+           * `TranslateBatchResponseSchema` defaults `usage` to zeros for a
+           * response written before the field existed, and `recordModelUsage`
+           * returns at `requests <= 0` without writing. So an API that does not
+           * report usage leaves no row rather than a row of zeros — unknown
+           * consumption stays distinguishable from measured consumption of
+           * nothing. The API deployed today does report it (#143).
+           *
+           * It cannot break the run: `recordModelUsage` logs and swallows,
+           * deliberately, because the money is gone either way and a
+           * bookkeeping failure must not turn a run that worked into one that
+           * did not.
+           */
+          await recordModelUsage({
+            organizationId: organization.id,
+            operation: 'run',
+            usage: body.usage,
+          });
 
           /*
            * Banked here, immediately, and not at the end of the run.
