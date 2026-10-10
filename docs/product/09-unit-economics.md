@@ -19,13 +19,17 @@ Every number here comes from `packages/pricing`, which writes
 its generator, so no figure can be edited into **that file**.
 
 **This document is a different matter, and the distinction cost six weeks of
-accuracy.** There is no generator for this prose: its figures are transcribed
-from the artefact by hand, and nothing checks the transcription. On 2026-08-24
-two commits (#40, #41) moved `costPerThousandPairs` from 1.5492 to 1.8342 and
-updated the artefact without updating this page, so every headline figure here
-was wrong until 2026-10-10 — including the claim immediately above, which was
-read as covering the document it appears in. Figures below were re-transcribed
-on 2026-10-10. The structural fix is listed as an open item at the end.
+accuracy.** There is still no generator for this prose: its figures are
+transcribed from the artefact by hand. On 2026-08-24 two commits (#40, #41)
+moved `costPerThousandPairs` from 1.5492 to 1.8342 and updated the artefact
+without updating this page, so every headline figure here was wrong until
+2026-10-10 — including the claim immediately above, which was read as covering
+the document it appears in. Figures below were re-transcribed on 2026-10-10.
+
+Since #153 the transcription is no longer unchecked:
+`packages/pricing/src/report/document.test.ts` holds the **selected** figures to
+their sources, so that particular drift now fails a test instead of going
+unnoticed. What it covers, and what it deliberately does not, is at the end.
 
 ---
 
@@ -645,12 +649,31 @@ is the comparison against an **invoice**.
 
 ### Still open
 
-- **This document has no generator.** Its figures are transcribed from
-  `cost-model.json` by hand and nothing checks the transcription, which is how
-  they stayed six weeks stale. Either generate the prose or add a test that
-  greps the committed figures out of it.
-- **No invoice comparison.** Everything above is consumption × published rate.
-- **No per-locale attribution**, so output variance cannot be split between
-  script density and ambiguity refusals.
-- **The legacy browser path is uninstrumented**: `recordModelUsage` has exactly
-  one caller, the webhook.
+- **The selected figures are tested. The document as a whole is not.**
+  `packages/pricing/src/report/document.test.ts`, added in #153, binds **23**
+  figures to the path they come from in `cost-model.json`: the four
+  per-1,000-pair costs, the nine customer-shape costs, the four plan COGS and
+  three margins at cap, and the three production-observation figures. A failure
+  names the figure, its JSON path and the command that regenerates it, so the
+  2026-08-24 drift would now be a red test rather than six quiet weeks. Four
+  further assertions hold the honesty clauses rather than the arithmetic: the
+  published rate, the adversarial run, `reconciledAgainstInvoice` staying false
+  with the page still saying so, and the single-observation caveat surviving.
+
+  **There is still no generator, and the coverage is partial on purpose.** Any
+  number outside those 23 can still drift — the token counts in the measured
+  tables, the ratios quoted mid-sentence, the arithmetic in the worked
+  examples. Widening it means restructuring this document into data, which is
+  the generator the test was chosen over: the value here is the argument, and
+  the drift happened in figures quoted inside sentences that a table generator
+  would have left unguarded either way.
+- **No invoice comparison, and this is the one that matters most.** Every
+  dollar figure above is measured consumption multiplied by a published rate.
+  `reconciledAgainstInvoice` is false in the artefact and nothing has been set
+  against a provider bill, so the model says what the product *consumes*, not
+  what it is *billed*.
+- **One observation is not a rate.** `establishesCostPerPair` is false. Several
+  corrections across known locale sets are needed before a per-pair cost can be
+  claimed from production, and there is still **no per-locale attribution** —
+  `api_usage_daily` has no such column, so the output variance cannot be split
+  between script density and ambiguity refusals.
