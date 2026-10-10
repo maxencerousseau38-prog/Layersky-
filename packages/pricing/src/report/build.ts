@@ -5,7 +5,6 @@ import { INPUTS } from '../inputs.js';
 import {
   HAIKU_4_5,
   SONNET_5,
-  SONNET_5_INTRO,
   affordablePairsPerMonth,
   annualMargin,
   costPerThousandPairs,
@@ -95,9 +94,6 @@ const levers = {
   onHaiku45: round(
     customerCost({ ...normal, rate: HAIKU_4_5 }).steadyStateMonthlyCost,
   ),
-  atIntroductoryRates: round(
-    customerCost({ ...normal, rate: SONNET_5_INTRO }).steadyStateMonthlyCost,
-  ),
 };
 
 /** How much the guessed ambiguity rate moves the answer. */
@@ -140,15 +136,67 @@ const unit = {
   ),
 };
 
+/**
+ * The 2026-10-09 production correction, priced.
+ *
+ * Derived here rather than written down. The token counts are MEASURED and the
+ * rate is PUBLISHED, so the dollar figure is the product of the two and has to
+ * move when either moves. Writing $0.027264 into a document instead would have
+ * survived the next price change unaltered — which is the exact failure this
+ * generator exists to prevent, and which the $3/$15 rate had already caused
+ * once.
+ */
+const observed = INPUTS.MEASURED.productionCorrection;
+const productionObservation = {
+  measuredOn: '2026-10-09',
+  source: 'api_usage_daily (organization layersky, usage_date 2026-10-09)',
+  repository: 'maxencerousseau38-prog/localize-infra-fixture-i18next',
+  pullRequest: 20,
+  correctivePullRequest: 21,
+  requests: observed.requests,
+  inputTokens: observed.inputTokens,
+  outputTokens: observed.outputTokens,
+  thinkingTokens: observed.thinkingTokens,
+  locales: observed.locales,
+  keys: observed.keys,
+  unitsCharged: observed.unitsCharged,
+  unitsApplied: observed.unitsApplied,
+  derivedInputCostUsd: round((observed.inputTokens * SONNET_5.input) / 1e6, 6),
+  derivedOutputCostUsd: round(
+    (observed.outputTokens * SONNET_5.output) / 1e6,
+    6,
+  ),
+  derivedCostUsd: round(
+    (observed.inputTokens * SONNET_5.input +
+      observed.outputTokens * SONNET_5.output) /
+      1e6,
+    6,
+  ),
+  /** Measured tokens times a published rate. Not an invoice, and not compared to one. */
+  reconciledAgainstInvoice: false,
+  /**
+   * Six locales of mixed script with two ambiguity refusals, aggregated with
+   * no per-locale breakdown. One correction over a mixture does not establish
+   * a cost per string-locale pair.
+   */
+  establishesCostPerPair: false,
+};
+
 const report = {
   generatedBy: 'packages/pricing/src/report/build.ts',
   currency: 'USD',
   model: 'claude-sonnet-5',
+  /*
+   * One rate, and no expiry. $2/$10 was introductory through 2026-08-31 and
+   * Anthropic made it the standard price, cancelling the scheduled rise to
+   * $3/$15. There is no longer a second Sonnet 5 rate to report, so the
+   * `introductory` and `introductoryUntil` fields are gone rather than
+   * retained holding the same numbers as `standard`.
+   */
   rates: {
     standard: SONNET_5,
-    introductoryUntil: '2026-08-31',
-    introductory: SONNET_5_INTRO,
   },
+  productionObservation,
   inputs: INPUTS,
   outputCeiling: {
     maxOutputTokensPerRequest: INPUTS.PIPELINE.maxOutputTokensPerRequest,
