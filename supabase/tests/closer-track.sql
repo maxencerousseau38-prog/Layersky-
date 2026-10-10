@@ -43,6 +43,23 @@ begin
   perform set_config('role','authenticated',true);
 
   org := public.create_organization('DP track','dp-track');
+
+  /*
+   * This proof's operator.
+   *
+   * `20261010000100_closer_operators.sql` made Closer writes require an
+   * explicit `closer_operators` grant, so a proof that builds its own fixtures
+   * has to grant itself one. That makes the fixture more honest rather than
+   * less: it now models a real operator instead of any member of the
+   * organization, which is what the product no longer accepts.
+   *
+   * Written as `postgres` because the write guard waves through a caller with
+   * no JWT subject, and rolled back with everything else.
+   */
+  perform set_config('role','postgres',true);
+  insert into public.closer_operators (organization_id, user_id, granted_reason)
+  values (org.id, owner_id, 'proof fixture: this script is the operator');
+  perform set_config('role','authenticated',true);
   c1 := public.closer_upsert_company(org.id,'Acme','acme-dp.test','github_repository','https://github.com/a/b','a/b');
   c2 := public.closer_upsert_company(org.id,'Beta','beta-dp.test','github_repository','https://github.com/c/d','c/d');
   dp := public.closer_open_lead(c1.id);

@@ -58,6 +58,23 @@ begin
   perform set_config('role','authenticated',true);
   org_op := (public.create_organization('Op','act-op-'||floor(random()*100000)::text)).id;
 
+  /*
+   * This proof's operator.
+   *
+   * `20261010000100_closer_operators.sql` made Closer writes require an
+   * explicit `closer_operators` grant, so a proof that builds its own fixtures
+   * has to grant itself one. That makes the fixture more honest rather than
+   * less: it now models a real operator instead of any member of the
+   * organization, which is what the product no longer accepts.
+   *
+   * Written as `postgres` because the write guard waves through a caller with
+   * no JWT subject, and rolled back with everything else.
+   */
+  perform set_config('role','postgres',true);
+  insert into public.closer_operators (organization_id, user_id, granted_reason)
+  values (org_op, u_op, 'proof fixture: this script is the operator');
+  perform set_config('role','authenticated',true);
+
   -- One company whose repository owner can match an installation, and one
   -- discovered from a website with no repository at all. The second is a
   -- legitimate lead that simply cannot be matched this way.
@@ -179,6 +196,25 @@ begin
 
   /* ---- the real link -------------------------------------------------- */
 
+  /*
+   * No JWT for this call, which is what a service-role caller actually is.
+   *
+   * `closer_link_activation` and `closer_unlink_activation` are granted to
+   * `service_role` only and take the acting user as a **parameter** precisely
+   * because there is no session to read it from. This script was already in
+   * the `postgres` role here, but `set_config(..., true)` is transaction-local
+   * rather than role-local, so the subject set for an earlier assertion
+   * survived the role switch — and the Closer write guard added in
+   * `20261010000100_closer_operators.sql` reads `auth.uid()`, not the role. It
+   * therefore saw a user with no grant and refused the `update` inside the
+   * function.
+   *
+   * Production never reaches that state: `apps/web`'s admin client carries no
+   * user JWT at all. So this is the script catching up with what it was always
+   * modelling. `'{}'` rather than `''` — an empty string is not valid JSON and
+   * `auth.uid()` casts before reading `sub`.
+   */
+  perform set_config('request.jwt.claims','{}',true);
   lead_match := public.closer_link_activation(lead_match.id, org_prospect, u_op);
   r := r || format('linked=%s(want t); ',
     lead_match.activated_organization_id = org_prospect);
@@ -301,6 +337,9 @@ begin
   /* ---- unlink --------------------------------------------------------- */
 
   perform set_config('role','postgres',true);
+  -- Same reason as the link above: the claim from the previous assertion is
+  -- still set, and the write guard reads it.
+  perform set_config('request.jwt.claims','{}',true);
   lead_match := public.closer_unlink_activation(lead_match.id, u_op);
   r := r || format('unlinked=%s(want t); provenance-cleared=%s(want t); ',
     lead_match.activated_organization_id is null,
