@@ -28,3 +28,19 @@ export const SEEDED_PASSWORD = 'acceptance-test-pw-8chars';
  */
 export const OUTSIDER_EMAIL = 'intruder@localize-infra.dev';
 export const OUTSIDER_PASSWORD = 'intruder-test-pw-8chars';
+
+/**
+ * A third seeded identity: a member of the very workspace Closer runs in.
+ *
+ * The harder case than the outsider, and the one the authorisation change is
+ * about. This account is a `member` of `acceptance`, which is the organization
+ * `closer_workspaces` designates — so until
+ * `20261010000100_closer_operators.sql` it could read the whole pipeline and
+ * call every Closer write function, because both gated on
+ * `is_org_member(organization_id)`.
+ *
+ * The seed deliberately gives it **no** `closer_operators` grant. If it ever
+ * gets one, the refusal tests below stop testing anything.
+ */
+export const MEMBER_EMAIL = 'member@localize-infra.dev';
+export const MEMBER_PASSWORD = 'member-test-pw-12chars';

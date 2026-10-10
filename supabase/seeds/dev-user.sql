@@ -488,6 +488,32 @@ begin
   insert into public.closer_workspaces (organization_id, note)
   values (proj.organization_id, 'Seeded development workspace')
   on conflict (organization_id) do nothing;
+
+  /*
+   * And who may operate it. Enabling Closer for an organization no longer
+   * grants anybody access — `20261010000100_closer_operators.sql` made that an
+   * explicit per-user row, because every *member* of the workspace could
+   * otherwise read the pipeline.
+   *
+   * **The seed has to do this itself, and that is not a duplicate of the
+   * migration's bootstrap.** `supabase db reset` applies migrations to an empty
+   * database and only then runs this file, so at migration time there is no
+   * `closer_workspaces` row for the bootstrap to find and it grants nothing.
+   * The bootstrap exists for the *existing* production database, where the row
+   * is already there; this exists for a database built from scratch. Without
+   * it, Closer answers 404 for everybody here and
+   * `supabase/tests/closer-operators.sql` fails on `owner-has-grant`.
+   *
+   * The owner only. `member@localize-infra.dev` is deliberately left without a
+   * grant — that account is the subject of the refusal proofs, and giving it
+   * one would quietly turn them into tests of nothing.
+   */
+  insert into public.closer_operators (organization_id, user_id, granted_reason)
+  select proj.organization_id, m.user_id, 'seed: the acceptance workspace owner'
+  from public.organization_members m
+  where m.organization_id = proj.organization_id
+    and m.role = 'owner'
+  on conflict (organization_id, user_id) do nothing;
 end $$;
 
 /* ------------------------------------------------------------------ *

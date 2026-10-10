@@ -1,5 +1,11 @@
 import { type Page, expect, test } from '@playwright/test';
-import { OUTSIDER_EMAIL, OUTSIDER_PASSWORD, STORAGE_STATE } from './session';
+import {
+  MEMBER_EMAIL,
+  MEMBER_PASSWORD,
+  OUTSIDER_EMAIL,
+  OUTSIDER_PASSWORD,
+  STORAGE_STATE,
+} from './session';
 
 /**
  * The operator's pipeline, against the seeded fixtures.
@@ -570,6 +576,87 @@ test.describe('an authenticated user outside the Closer workspace', () => {
         expect(body, `${path} rendered the Closer term "${term}"`).not.toMatch(
           new RegExp(term, 'i'),
         );
+      }
+    }
+  });
+});
+
+/*
+ * A member of the workspace Closer runs in, which is the case that mattered.
+ *
+ * The outsider test above proves tenancy. This proves **authorisation**, and it
+ * is the harder half: `member@localize-infra.dev` is a `member` of
+ * `acceptance`, the organization `closer_workspaces` designates. Until
+ * `20261010000100_closer_operators.sql` that was enough — all twelve select
+ * policies and all twenty write functions gated on
+ * `is_org_member(organization_id)`, so this account could read every company,
+ * contact, lead, message, reply, loss reason and internal note, and could call
+ * `closer_set_stage` over PostgREST.
+ *
+ * Membership is now necessary and not sufficient: `is_closer_operator` requires
+ * a row in `closer_operators`, and the seed deliberately gives this account
+ * none.
+ *
+ * The database half is proved in `supabase/tests/closer-operators.sql`, which
+ * is where the write path and the per-table reads are checked — a browser
+ * cannot make the PostgREST call that mattered. This is the surface half: the
+ * routes answer 404 and leak nothing.
+ */
+test.describe('an ordinary member of the Closer workspace', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test('is refused Closer, although it belongs to the workspace', async ({
+    page,
+  }) => {
+    await page.goto('/login');
+    await page.getByLabel('Email').fill(MEMBER_EMAIL);
+    await page.getByLabel('Password').fill(MEMBER_PASSWORD);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForURL((url) => !url.pathname.startsWith('/login'), {
+      timeout: 30_000,
+    });
+
+    /*
+     * The precondition, and here it carries more weight than in the outsider
+     * test: this account must demonstrably be *inside* `acceptance`. A 404 on
+     * Closer proves authorisation only if membership is established, otherwise
+     * it is indistinguishable from the tenancy refusal already covered above.
+     */
+    const own = await page.goto('/acceptance/projects');
+    expect(
+      own?.status(),
+      'the member cannot reach the workspace it belongs to',
+    ).toBe(200);
+
+    for (const path of [
+      '/closer',
+      '/closer/companies',
+      '/closer/approvals',
+      '/closer/replies',
+    ]) {
+      const response = await page.goto(path);
+      expect(response?.status(), `${path} did not answer 404`).toBe(404);
+
+      const body = (await page.locator('body').innerText()).replace(
+        /\s+/g,
+        ' ',
+      );
+      for (const seeded of [
+        'Partner Co',
+        'Noisy Co',
+        'Sales Co',
+        'Movable Co',
+      ]) {
+        expect(
+          body,
+          `${path} leaked the seeded lead "${seeded}" to a member`,
+        ).not.toContain(seeded);
+      }
+      for (const term of ['Companies', 'Approvals', 'Replies', 'loss reason']) {
+        expect(
+          body,
+          `${path} rendered the Closer term "${term}" for a member`,
+        ).not.toMatch(new RegExp(term, 'i'));
       }
     }
   });
