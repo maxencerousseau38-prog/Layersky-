@@ -1,5 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
-import { STORAGE_STATE } from './session';
+import { OUTSIDER_EMAIL, OUTSIDER_PASSWORD, STORAGE_STATE } from './session';
 
 /**
  * The operator's pipeline, against the seeded fixtures.
@@ -441,5 +441,136 @@ test.describe('changing a stage', () => {
     await page.reload();
     await page.waitForLoadState('networkidle');
     await expect(page.getByText('Installed → Lost')).toHaveCount(0);
+  });
+});
+
+/*
+ * The gate, from the outside.
+ *
+ * `/closer/*` is protected by `CloserLayout`, which calls `hasCloser()` and
+ * then `notFound()`. `hasCloser()` selects from `closer_workspaces` **under
+ * RLS** (`closer_workspaces_select_member` → `is_org_member(organization_id)`),
+ * so the database decides and no identity is hardcoded anywhere.
+ *
+ * Nothing proved the refusal until now. Every test above runs as the seeded
+ * account, which *is* a Closer member, so the suite demonstrated the feature
+ * working and said nothing about who it keeps out — and an operator surface
+ * carrying a sales pipeline is exactly where that silence is expensive.
+ *
+ * The subject is `intruder@localize-infra.dev`: a real seeded account, signed
+ * in properly, owning an organization that has no `closer_workspaces` row. Not
+ * an anonymous visitor — `auth.spec.ts` covers those, and a 404 for someone who
+ * was never authenticated would prove nothing about authorisation.
+ *
+ * **Fixtures only, and no authorisation rule was touched to make this pass.**
+ * The identity already existed in the seed for `tenant-isolation.sql`; all that
+ * was added is its name in `session.ts`.
+ *
+ * Deliberately *not* asserted here: a **member of the Closer organization**
+ * does see Closer, because the policy admits any `is_org_member`. That is the
+ * policy's current meaning rather than a bug this test could settle, it is
+ * reported as a decision for a human, and asserting either answer would freeze
+ * a choice nobody has made.
+ */
+test.describe('an authenticated user outside the Closer workspace', () => {
+  // A blank context, so the shared Closer session cannot leak in. The sign-in
+  // below is the test's own precondition.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test('is refused every Closer route, and shown no pipeline data', async ({
+    page,
+  }) => {
+    await page.goto('/login');
+    await page.getByLabel('Email').fill(OUTSIDER_EMAIL);
+    await page.getByLabel('Password').fill(OUTSIDER_PASSWORD);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForURL((url) => !url.pathname.startsWith('/login'), {
+      timeout: 30_000,
+    });
+
+    /*
+     * Signed in for real, proved by a surface this account *is* entitled to.
+     *
+     * This is the precondition the whole test rests on: without it the 404s
+     * below would be indistinguishable from an anonymous visitor being
+     * bounced, and the test would be about routing rather than authorisation.
+     *
+     * Asserted against `intruder-co`, the organization this account owns,
+     * rather than against a "Sign out" control — which is not on the page the
+     * login redirect lands on. One session, two answers: 200 for what it owns,
+     * 404 for Closer. That contrast is the whole point.
+     */
+    const own = await page.goto('/intruder-co/projects');
+    expect(own?.status(), 'the outsider cannot reach its own workspace').toBe(
+      200,
+    );
+
+    for (const path of [
+      '/closer',
+      '/closer/companies',
+      '/closer/approvals',
+      '/closer/replies',
+    ]) {
+      const response = await page.goto(path);
+
+      // 404, not a redirect and not an empty 200: `notFound()` is the product's
+      // chosen answer, and it is the one that does not confirm the surface
+      // exists.
+      expect(response?.status(), `${path} did not answer 404`).toBe(404);
+
+      /*
+       * And nothing from the pipeline on the page. A 404 status with the shell
+       * still rendering lead names would be the leak the status appears to
+       * rule out, so the body is checked rather than trusted.
+       *
+       * These four companies are the seeded fixtures named at the top of this
+       * file. All synthetic — no real prospect or customer appears in any
+       * fixture.
+       */
+      /*
+       * `innerText`, not `textContent`. The latter includes the contents of
+       * `<script>` tags, so it returns Next's RSC flight payload — which
+       * mentions "pipeline" from the client bundle and would fail this
+       * assertion on noise rather than on a leak. What matters is what a
+       * person can see.
+       */
+      const body = (await page.locator('body').innerText()).replace(
+        /\s+/g,
+        ' ',
+      );
+      for (const seeded of [
+        'Partner Co',
+        'Noisy Co',
+        'Sales Co',
+        'Movable Co',
+      ]) {
+        expect(
+          body,
+          `${path} leaked the seeded lead "${seeded}"`,
+        ).not.toContain(seeded);
+      }
+      /*
+       * Nor Closer's own vocabulary, which would say the surface rendered.
+       *
+       * Narrow on purpose. The 404 is served *inside* the application shell,
+       * whose sidebar legitimately carries a section headed "PIPELINE" — the
+       * customer's own i18n nav (Home, Ambiguity, Review, Runs, Locales). A
+       * test that forbade the word "pipeline" failed on that shell rather than
+       * on any leak, which is the opposite of useful. These terms appear only
+       * on Closer surfaces: its nav labels, and the taxonomy of
+       * `packages/closer-core`.
+       */
+      for (const term of [
+        'Companies',
+        'Approvals',
+        'Replies',
+        'loss reason',
+        'design partner',
+      ]) {
+        expect(body, `${path} rendered the Closer term "${term}"`).not.toMatch(
+          new RegExp(term, 'i'),
+        );
+      }
+    }
   });
 });
