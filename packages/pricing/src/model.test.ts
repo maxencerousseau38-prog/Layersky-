@@ -3,7 +3,6 @@ import { MEASURED, PIPELINE, PRICES } from './inputs.js';
 import {
   HAIKU_4_5,
   SONNET_5,
-  SONNET_5_INTRO,
   customerCost,
   dailyCapCost,
   margin,
@@ -145,19 +144,23 @@ describe('the levers, priced', () => {
     );
   });
 
-  it('the introductory rate flatters every figure and expires', () => {
-    // Modelling at intro rates would understate cost by a third and stop being
-    // true on 2026-08-31.
-    expect(SONNET_5_INTRO.input).toBeLessThan(SONNET_5.input);
-    const intro = customerCost({ ...normal, rate: SONNET_5_INTRO });
-    const standard = customerCost(normal);
-    expect(intro.steadyStateMonthlyCost).toBeLessThan(
-      standard.steadyStateMonthlyCost,
-    );
-    // The model must default to the standard rate.
-    expect(standard.steadyStateMonthlyCost).toBe(
+  it('prices at the permanent standard rate, with no expiring rate modelled', () => {
+    /*
+     * This used to assert that the introductory rate flattered every figure
+     * and expired on 2026-08-31. Anthropic made $2/$10 the standard price and
+     * cancelled the rise to $3/$15, so there is no second Sonnet 5 rate left
+     * to compare against and no date on which these figures stop being true.
+     *
+     * What still needs guarding is the default: every function here takes
+     * `rate` with a default, so a wrong default would silently reprice the
+     * whole model.
+     */
+    expect(SONNET_5).toEqual({ input: 2.0, output: 10.0 });
+    expect(customerCost(normal).steadyStateMonthlyCost).toBe(
       customerCost({ ...normal, rate: SONNET_5 }).steadyStateMonthlyCost,
     );
+    // Haiku remains the cheaper option, so the lever it represents is real.
+    expect(HAIKU_4_5.input).toBeLessThan(SONNET_5.input);
   });
 });
 
@@ -199,12 +202,7 @@ describe('prices are quoted per million tokens', () => {
   it('matches the published rates the model was built against', () => {
     // Pinned so a silent edit to a rate shows up as a failing test rather than
     // as a quietly different recommendation.
-    expect(PRICES.sonnet5).toEqual({
-      input: 3.0,
-      output: 15.0,
-      introInput: 2.0,
-      introOutput: 10.0,
-    });
+    expect(PRICES.sonnet5).toEqual({ input: 2.0, output: 10.0 });
     expect(PRICES.haiku45).toEqual({ input: 1.0, output: 5.0 });
   });
 });

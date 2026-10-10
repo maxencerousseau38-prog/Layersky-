@@ -32,8 +32,44 @@ describe('cost-model.json', () => {
     expect(REPORT.inputs).toHaveProperty('ASSUMPTIONS');
   });
 
-  it('is priced at standard rates, not the expiring introductory ones', () => {
-    expect(REPORT.rates.standard.input).toBe(3.0);
-    expect(REPORT.rates.introductoryUntil).toBe('2026-08-31');
+  it('is priced at the permanent standard rate, with no expiring rate left', () => {
+    /*
+     * This asserted $3.00 and an expiry of 2026-08-31. Anthropic made the
+     * $2/$10 introductory rate standard and cancelled the scheduled rise, so
+     * both halves became false. The `not.toHaveProperty` pair is the load
+     * bearing part: it fails if an `introductory` rate is reintroduced into
+     * the report without a source, which is how the stale one survived.
+     */
+    expect(REPORT.rates.standard).toEqual({ input: 2.0, output: 10.0 });
+    expect(REPORT.rates).not.toHaveProperty('introductory');
+    expect(REPORT.rates).not.toHaveProperty('introductoryUntil');
+  });
+
+  it('derives the production observation from measured tokens and the published rate', () => {
+    /*
+     * The one figure in this report taken from production rather than a
+     * harness. Pinned as arithmetic, not as a literal: if either the token
+     * counts or the rate change, this fails rather than quietly disagreeing
+     * with the document that quotes it.
+     */
+    const o = REPORT.productionObservation;
+    expect(o.requests).toBe(6);
+    expect(o.inputTokens).toBe(9847);
+    expect(o.outputTokens).toBe(757);
+    expect(o.derivedCostUsd).toBeCloseTo(
+      (9847 * REPORT.rates.standard.input +
+        757 * REPORT.rates.standard.output) /
+        1e6,
+      9,
+    );
+    expect(o.derivedCostUsd).toBeCloseTo(0.027264, 9);
+
+    // The distinction the model is required to keep: consumption is measured,
+    // the dollar figure is derived, and no invoice has been compared to it.
+    expect(o.reconciledAgainstInvoice).toBe(false);
+    // Six mixed locales, two refusals, no per-locale breakdown.
+    expect(o.establishesCostPerPair).toBe(false);
+    expect(o.unitsCharged).toBe(6);
+    expect(o.unitsApplied).toBe(4);
   });
 });

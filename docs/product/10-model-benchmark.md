@@ -39,7 +39,18 @@ not.
 | Glossary violations | **0** | 0 | 0 |
 | Escalations | 2 | 2 | **0** |
 | Latency per request | 42.7 s | 68.6 s | **34.5 s** |
-| Cost per 1,000 pairs | $1.47 | $1.99 | **$0.44** |
+| Cost per 1,000 pairs | $0.98 | $1.33 | **$0.44** |
+
+**Repriced 2026-10-10, and only two of those three columns moved.** Anthropic
+made Sonnet 5's $2/$10 introductory rate permanent and cancelled the rise to
+$3/$15; Haiku 4.5 stayed at $1/$5. The Sonnet columns read $1.47 and $1.99
+until then. **Nothing was re-run** — token consumption is the measurement and
+did not change; only its price did. Input and output both fell by exactly one
+third, so every Sonnet dollar figure in this document scales by two thirds, for
+any mix of the two.
+
+The consequence worth noticing: **Sonnet is now 2.2× Haiku's cost, not 3.3×.**
+The cheap-model argument got weaker without anyone measuring anything.
 
 ¹ Spanish is the only locale all three configurations answered completely.
 Comparing a five-locale average against a one-locale average would flatter
@@ -81,7 +92,7 @@ Three locales of five, and the arithmetic is the interesting part. Its Spanish
 quality is within a point of Sonnet's (79.70 against 80.55) and its Brazilian
 Portuguese is *better* (83.3 against 81.4). Its Japanese is 8.3 points worse
 (65.1 against 73.4). It preserved every placeholder and violated no glossary
-term. It is 3.3× cheaper and 20% faster.
+term. It is 2.2× cheaper and 20% faster.
 
 What rules it out is **unparseable output**. German failed in the comparison run and
 again on one of five repeats — with `stop_reason: end_turn`, so the model
@@ -128,12 +139,16 @@ production path. Nothing about the model or the effort setting was changed.
 
 | | Answered | Missing | chrF | Requests | Latency | Cost | $/1k pairs |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| **`effort: low`** before | 414/414 | 0 | 75.49 | 5 | 214 s | $0.608 | $1.47 |
-| **`effort: low`** after | 414/414 | 0 | 75.23 | 5 | 214 s | $0.610 | $1.47 |
+| **`effort: low`** before | 414/414 | 0 | 75.49 | 5 | 214 s | $0.405 | $0.98 |
+| **`effort: low`** after | 414/414 | 0 | 75.23 | 5 | 214 s | $0.407 | $0.98 |
 | **Haiku 4.5** before | 323/414 | 91 | 73.03 | 5 | 173 s | $0.181 | $0.44 |
 | **Haiku 4.5** after | **414/414** | **0** | 73.84 | 6 | 181 s | $0.183 | $0.44 |
-| **default reasoning** before | 90/414 | 324 | 75.52 | 5 | 343 s | $0.826 | $1.99 |
-| **default reasoning** after | **0/414** | **414** | — | 15 | 1,045 s | $2.558 | $6.18 |
+| **default reasoning** before | 90/414 | 324 | 75.52 | 5 | 343 s | $0.551 | $1.33 |
+| **default reasoning** after | **0/414** | **414** | — | 15 | 1,045 s | $1.705 | $4.12 |
+
+Sonnet rows repriced at $2/$10; the Haiku rows are unchanged because its rate
+is. Answered counts, chrF, requests and latency are measurements and are
+untouched.
 
 Three things to read off it, and only the first is good news.
 
@@ -143,7 +158,7 @@ $0.002 and eight seconds. That is the intermittent-fault case, and it is the one
 the pipeline is actually exposed to.
 
 **It costs the recommended configuration nothing.** `effort: low` needed no
-retries in either run — five requests both times, the same $1.47 per 1,000
+retries in either run — five requests both times, the same $0.98 per 1,000
 pairs. The insurance is free when the tail does not fire.
 
 **It made the broken configuration worse, and that is not hidden.** Default
@@ -310,7 +325,7 @@ Not as the default, and not yet anywhere. This answer was written before the
 retry existed, expecting the retry to be what changed it. **It did not.**
 
 The quality is close enough to be tempting — within a point on Spanish, better
-on Portuguese, 3.3× cheaper. Three things stand against it:
+on Portuguese, 2.2× cheaper. Three things stand against it:
 
 - **Its failures survive retrying.** Two of five attempts on the same German
   batch lost all 90 strings after three tries each, every time with the same
@@ -329,14 +344,52 @@ output is the obvious lever. Routing by locale is a real option the data
 supports. This document does not recommend acting on it.
 
 **Expected cost per 1,000 translation pairs**
-$1.47 measured, against $1.55 modelled in `09-unit-economics.md` — the model
-was 5% conservative, which is the direction to be wrong in. Haiku measured
-$0.44.
+**$0.98 measured**, against **$1.22 modelled** in `09-unit-economics.md` — the
+model is **25% conservative**. Haiku measured $0.44, unchanged.
+
+This line read "$1.47 measured, against $1.55 modelled … 5% conservative" and
+**the 5% was wrong for seven weeks**, independently of the repricing. It
+compared the benchmark against the 1.5492 the model carried on 2026-08-22; the
+escalation tuning raised it to 1.8342 on 2026-08-24 and this sentence was never
+revisited. The gap was 25% before the reprice and is 25% after it — both rates
+fell by the same third, so the ratio is untouched. The direction is still the
+safe one; the magnitude was understated five-fold.
 
 **Expected quality trade-off**
 None against default reasoning; it is a gain. Against Haiku, Sonnet buys
-reliability and Japanese quality for 3.3× the token cost, which at $1.47 per
-1,000 pairs is a rounding error against every plan in `09-unit-economics.md`.
+reliability and Japanese quality for **2.2×** the token cost — it was 3.3×
+before Sonnet was repriced and Haiku was not — which at $0.98 per 1,000 pairs
+is still a rounding error against every plan in `09-unit-economics.md`.
+
+The premium narrowed by a third without any new measurement, so the trade is
+more favourable to Sonnet than when this was written, not less.
 
 **Should the current architecture be kept?**
 Yes, plus a retry. See above.
+
+### A separate lead, not a recommendation: Claude Sonnet 5.5
+
+**Nothing in production changes.** `API_ANTHROPIC_MODEL` is unset and
+`apps/api/src/index.ts` still defaults to `claude-sonnet-5`. This is recorded
+as a benchmark lead so it is not rediscovered later.
+
+Read from the same Anthropic pricing table on 2026-10-10, `claude-sonnet-5.5`
+is listed at **$2 / MTok input and $10 / MTok output — identical to Sonnet 5**,
+with cheaper cache hits ($0.10 against $0.20, 0.05× base rather than 0.1×).
+
+That makes it the one candidate whose cost case needs no argument: at the same
+price, any quality or reliability gain is free, and a loss is the only way it
+could be the wrong choice. Which is precisely why it must go through the
+harness rather than be adopted on a price table — the same reasoning that keeps
+Haiku unadopted at half the cost.
+
+What is **not** known and would have to be measured: chrF per locale, whether
+it answers 414/414 on this corpus, escalation behaviour against invariant 4,
+and JSON validity across repeated attempts. The run costs one batch of
+inference against the existing 414-entry corpus.
+
+The cache-hit difference is worth a line of its own, because
+`09-unit-economics.md` records prompt caching as the largest *available* saving
+that is not taken — no request sets `cache_control`. If caching is ever
+switched on, Sonnet 5.5 halves the cost of the cached half relative to Sonnet 5.
+Those two decisions are therefore cheaper to take together than apart.

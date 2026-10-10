@@ -18,10 +18,6 @@ export const SONNET_5: Rate = {
   input: PRICES.sonnet5.input,
   output: PRICES.sonnet5.output,
 };
-export const SONNET_5_INTRO: Rate = {
-  input: PRICES.sonnet5.introInput,
-  output: PRICES.sonnet5.introOutput,
-};
 export const HAIKU_4_5: Rate = {
   input: PRICES.haiku45.input,
   output: PRICES.haiku45.output,

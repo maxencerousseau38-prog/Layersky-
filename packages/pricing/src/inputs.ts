@@ -130,6 +130,52 @@ export const MEASURED = {
    * burying: escalating instead of guessing is a real line on the bill.
    */
   outputTokensPerAmbiguousString: 239,
+
+  /**
+   * The first production correction with token accounting — and the first
+   * entry in this file not obtained in a harness.
+   *
+   * Measured 2026-10-09 on `localize-infra-fixture-i18next` #20: one English
+   * key (`errors.rateLimited`) added to the source catalogue and absent from
+   * all six target locales. One `pull_request.opened` delivery, no retries,
+   * corrective pull request #21 thirty-one seconds later.
+   *
+   * Read from `api_usage_daily` (organization `layersky`, usage_date
+   * 2026-10-09) — the row `consume_api_quota` writes as it charges, not a
+   * second count re-derived from `runs`.
+   *
+   * **The consumption is measured; the dollar figure is not.** It is this
+   * consumption multiplied by the PUBLISHED rate below, which makes it a
+   * *derived* cost and not an amount reconciled against a provider invoice.
+   * No invoice has been compared to it, and until one is, this settles what
+   * the product consumes rather than what it is billed.
+   *
+   * **One observation, six mixed locales — not a cost per pair.** `ar` and
+   * `ja` are non-Latin and tokenise more densely than the German-only harness
+   * this model was built on, and two of the six were refused as ambiguous,
+   * each emitting the model's question as extra output. `api_usage_daily`
+   * aggregates per workspace-day with no per-locale breakdown, so those two
+   * causes cannot be separated from one another. Establishing a cost per
+   * string-locale pair needs several corrections over known locale sets; this
+   * is one correction over a mixture.
+   */
+  productionCorrection: {
+    /** `model_requests` — one call per target locale, no retry. */
+    requests: 6,
+    /** `input_tokens`. 1641 per call, against 1625 predicted by the harness fit. */
+    inputTokens: 9_847,
+    /** `output_tokens`, thinking included. 126 per call against 44 in the harness. */
+    outputTokens: 757,
+    /** `thinking_tokens`. Zero, as the harness also measured at this batch size. */
+    thinkingTokens: 0,
+    /** ar, de, es, fr, ja, pt-BR. */
+    locales: 6,
+    /** Source keys the pull request changed. */
+    keys: 1,
+    /** Charged for what was sent. `de` and `es` were refused as ambiguous. */
+    unitsCharged: 6,
+    unitsApplied: 4,
+  },
 } as const;
 
 /* ------------------------------------------------------------------ *
@@ -233,18 +279,33 @@ export const PIPELINE = {
 /** US dollars per million tokens. */
 export const PRICES = {
   /**
-   * Anthropic list price, from the model table dated 2026-06-24.
+   * Anthropic list price. **$2.00/$10.00 per million, and permanent.**
    *
    * `claude-sonnet-5` is the configured default
    * (apps/api/src/index.ts: API_ANTHROPIC_MODEL ?? 'claude-sonnet-5').
    *
-   * The introductory rate of $2.00/$10.00 runs **through 2026-08-31**. Every
-   * figure in this model uses the standard rate, because a cost model built on
-   * a price that expires in ten days would be obsolete on arrival — and
-   * because a plan priced against intro rates loses 50% of its input margin
-   * the day they end.
+   * Source: the Anthropic pricing table, footnote 3, read 2026-10-10 —
+   * "The $2/$10 per million input/output token pricing for Claude Sonnet 5,
+   * announced at launch as introductory pricing through August 31, 2026, is
+   * now the standard price. The previously scheduled increase to $3/$15 per
+   * million input/output tokens on September 1, 2026 will not occur."
+   *
+   * This file modelled $3.00/$15.00 until 2026-10-10, on the stated reasoning
+   * that a model built on a rate due to expire would be obsolete on arrival.
+   * The reasoning was sound and the world went the other way: the
+   * introductory rate became the standard one. Input and output each fall by
+   * exactly one third, so every derived figure downstream moves.
+   *
+   * There is now **no second Sonnet 5 rate** — `introInput`/`introOutput` are
+   * gone rather than kept at the same value, because a lever whose two sides
+   * are identical measures nothing.
+   *
+   * The announcement date is deliberately not recorded. The official page
+   * carries none, and third-party coverage splits between 2026-08-10 and
+   * 2026-08-11, so a date here would be the one unsourced number in a file
+   * whose entire purpose is provenance.
    */
-  sonnet5: { input: 3.0, output: 15.0, introInput: 2.0, introOutput: 10.0 },
+  sonnet5: { input: 2.0, output: 10.0 },
 
   /**
    * The cheap-model option. Same source and date.
