@@ -212,8 +212,9 @@ function AnonymousBranch() {
  * is where the decision lives and retrofitting it later is how paywalls end up
  * shown to paying customers. Tests drive it directly by injecting a viewer.
  *
- * It quotes no price. Pricing is not modelled (see /pricing, which says so),
- * and a number invented here would be the first false claim on the site.
+ * It quotes no price. Costs are modelled (`packages/pricing`) but the
+ * commercial figures are not decided, and a number invented here would be the
+ * first false claim on the site.
  */
 function UpgradeBranch({ email }: { email: string }) {
   return (
@@ -232,8 +233,8 @@ function UpgradeBranch({ email }: { email: string }) {
           </p>
           <p className="mt-1 text-small leading-5 text-secondary">
             Pricing is flat, per project and active language — never per word,
-            character, key or seat. The figures are not modelled, so none are
-            shown here.
+            character, key or seat. What the service costs to run is modelled;
+            the commercial figures are not decided, so none are shown here.
           </p>
         </StateRule>
         <p className="text-small leading-5 text-secondary">

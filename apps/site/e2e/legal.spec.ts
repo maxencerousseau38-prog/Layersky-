@@ -246,6 +246,107 @@ test('no legal page promises self-serve workspace or account deletion', async ({
 });
 
 /*
+ * The DPA agreeing with itself, section by section.
+ *
+ * It carried both answers at once. "Return and deletion" said a workspace
+ * deletion "is done by hand, because no surface for either exists yet";
+ * "Helping you meet your own obligations" said "deleting a workspace removes
+ * all of it. Nothing has to be requested for that." One document, two claims,
+ * and the wrong one was the one that overstated the product.
+ *
+ * The test above did not catch it, which is the point of adding this one: that
+ * test pinned two specific sentences from an earlier revision, so a third
+ * phrasing of the same false claim sailed past. #148 corrected the clause below
+ * and left this one standing — the cross-surface miss CLAUDE.md records for the
+ * `export` command and for the GitHub App permissions.
+ *
+ * Scoped per section (`LegalSection` renders `aria-labelledby={id}`) rather
+ * than over the whole page, because the page must legitimately contain both
+ * "nothing has to be requested" (true of a project) and "on request" (true of a
+ * workspace). Asserted over the whole body, those two cancel out and the test
+ * proves nothing.
+ *
+ * Verified in code, not inferred: no `deleteWorkspace`, `deleteOrganization` or
+ * `deleteAccount` exists anywhere in the repository. `organizations_delete_owner`
+ * is an RLS policy with no application caller, and an account is additionally
+ * blocked while it owns a workspace because `organizations.created_by` is
+ * `on delete restrict`.
+ */
+test('the DPA does not promise a self-serve workspace deletion', async ({
+  page,
+}) => {
+  await page.goto('/dpa');
+
+  const section = async (id: string) =>
+    (
+      (await page.locator(`section[aria-labelledby="${id}"]`).textContent()) ??
+      ''
+    ).replace(/\s+/g, ' ');
+
+  const assistance = await section('assistance');
+  const deletion = await section('deletion');
+
+  expect(assistance, 'the obligations section is missing').not.toBe('');
+  expect(deletion, 'the deletion section is missing').not.toBe('');
+
+  // The exact claim that was there.
+  expect(
+    assistance,
+    'the DPA still says a workspace deletion removes everything with no request',
+  ).not.toMatch(/deleting a workspace removes all of it/i);
+
+  /*
+   * And the shape of it, reworded. `[^.]*` cannot cross a sentence boundary, so
+   * this does not fire on the corrected text — where "Nothing has to be
+   * requested for that." ends the project sentence and the workspace sentence
+   * begins after it.
+   */
+  expect(
+    assistance,
+    'the obligations section puts a workspace deletion in the no-request category',
+  ).not.toMatch(
+    /workspace[^.]*nothing has to be requested|nothing has to be requested[^.]*workspace/i,
+  );
+
+  // The accurate routing is present, so deleting the sentence fails this too.
+  expect(
+    assistance,
+    'the obligations section never says a workspace deletion must be asked for',
+  ).toMatch(/workspace.{0,80}(asked for|on request|by request)/i);
+  expect(
+    assistance,
+    'the obligations section never says there is no self-serve surface',
+  ).toMatch(/no self-serve surface/i);
+
+  // Project deletion remains the one described as immediate.
+  expect(
+    assistance,
+    'the obligations section lost the project-deletion capability',
+  ).toMatch(/deleting a project/i);
+
+  // Both sections have to agree, which is the property that failed.
+  expect(
+    deletion,
+    'the deletion section no longer describes the request route',
+  ).toMatch(/done by hand|on request/i);
+  expect(
+    deletion,
+    'the deletion section no longer says the surface is missing',
+  ).toMatch(/no surface for either exists/i);
+
+  /*
+   * No timescale or named owner is asserted, because none is claimed. The
+   * paragraph that follows already states what is promised for anything the
+   * product cannot do, and pinning a deadline here would turn a test into the
+   * source of a contractual commitment nobody made.
+   */
+  expect(
+    assistance,
+    'the obligations section invents a deletion deadline',
+  ).not.toMatch(/within \d+ (business )?days|\d+-day|immediately on request/i);
+});
+
+/*
  * Every provider the code can call, named where a reader looks for it.
  *
  * `apps/api/src/router/index.ts` declares

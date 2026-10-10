@@ -63,8 +63,20 @@ export default async function BillingPage({
             </dt>
             <dd className="mt-1 flex items-baseline gap-2">
               <Badge tone="confident">Included</Badge>
+              {/*
+                **"No string cap" was fixed on /pricing and not here.** The
+                hosted API grew a daily ceiling (`api_limits()`), so this said
+                the opposite of what the API enforces — the same cross-surface
+                miss CLAUDE.md records twice already: a correction on one
+                surface says nothing about another that repeats the claim.
+                The numbers are deliberately not duplicated here; Usage reads
+                them from `api_limits()` rather than from a second constant that
+                could drift.
+              */}
               <span className="text-small text-secondary">
-                Unlimited. No language, string or seat cap.
+                Unlimited projects and languages. No seat cap. A daily ceiling
+                does apply to the hosted API, to stop runaway scripts rather
+                than to charge you — Usage shows it against today&rsquo;s spend.
               </span>
             </dd>
           </div>
@@ -116,13 +128,22 @@ export default async function BillingPage({
           <h2 id="paid" className="text-subtitle font-semibold text-primary">
             Paid plans are not priced yet
           </h2>
-          <Badge tone="neutral">In development</Badge>
+          {/*
+            `/pricing` says "Not started" because there is no Stripe anywhere
+            in the repository. This said "In development", two surfaces
+            disagreeing about the same thing — and "in development" tells a
+            reader work is under way when no commit backs it.
+          */}
+          <Badge tone="neutral">Not started</Badge>
         </div>
         <p className="mt-3 max-w-[68ch] text-small leading-6 text-secondary">
           There is no billing system connected, no card is stored, and nothing
-          has been charged. Pricing is not modelled yet, and quoting a number we
-          might have to raise is the behaviour this product exists to be an
-          alternative to.
+          has been charged. What the service costs to run is modelled, and one
+          production run has been measured — but those figures are consumption
+          priced at the provider&rsquo;s published rate, not reconciled against
+          a supplier invoice. The commercial numbers are not decided, and no
+          customer has agreed to pay one, so quoting a figure here would be
+          inventing the part that is actually missing.
         </p>
         <p className="mt-3 max-w-[68ch] text-small leading-6 text-secondary">
           The commitment is firm regardless of where the numbers land: flat, per
