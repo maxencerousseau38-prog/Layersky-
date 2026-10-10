@@ -378,11 +378,35 @@ export default function DpaPage() {
           id="assistance"
           title="Helping you meet your own obligations"
         >
+          {/*
+           * **This section said a workspace deletion needs no request, and
+           * "Return and deletion" below says it is done by hand.** One
+           * document, two answers, and this was the one that overstated the
+           * product: no `deleteWorkspace`, `deleteOrganization` or
+           * `deleteAccount` exists anywhere in the repository. An account is
+           * additionally blocked while it owns a workspace, because
+           * `organizations.created_by` is `on delete restrict`.
+           *
+           * #148 corrected the clause below and left this one standing — the
+           * same cross-surface miss CLAUDE.md records for the `export` command
+           * and for the GitHub App permissions. A fix on one surface says
+           * nothing about another that repeats the claim.
+           *
+           * The request route is not given a new timescale or an owner here:
+           * the paragraph that follows already states what is promised for
+           * anything the product cannot do, and this one defers to it rather
+           * than competing with it.
+           */}
           <p>
-            Most of what a data subject can ask for, you can do yourself and
+            Some of what a data subject can ask for, you can do yourself and
             immediately: deleting a project removes its runs, the strings they
-            extracted and the translations they proposed; deleting a workspace
-            removes all of it. Nothing has to be requested for that.
+            extracted and the translations they proposed. Nothing has to be
+            requested for that.
+          </p>
+          <p>
+            Deleting a whole workspace, or an account, has to be asked for —
+            there is no self-serve surface for either. What that removes is
+            described under “Return and deletion” below.
           </p>
           <p>
             For anything the product cannot do — a copy of what is held, a

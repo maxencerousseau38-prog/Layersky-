@@ -35,7 +35,13 @@ const COMMITMENTS: Array<{
 }> = [
   {
     title: 'Cancel and keep everything',
-    body: 'Translations are committed to your repository as ordinary JSON. There is no export step because there is nothing to export from — delete the account, run git pull, everything is still there.',
+    // "Delete the account" was an instruction with nothing behind it, and this
+    // is the second place it appeared: the footer carried the same sentence and
+    // was corrected first, which is exactly the cross-surface miss this
+    // repository keeps recording. Project deletion ships; deleting a workspace
+    // or an account has no surface and is done on request. The claim being made
+    // is about portability, so it does not need to imply a button.
+    body: 'Translations are committed to your repository as ordinary JSON. There is no export step because there is nothing to export from — walk away whenever you like, run git pull, everything is still there.',
     tone: 'confident',
     status: 'Working today',
   },

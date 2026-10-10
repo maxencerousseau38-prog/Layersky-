@@ -82,9 +82,17 @@ export function SiteFooter() {
                 hosted app does keep a run's proposed translations as rows until
                 the pull request lands — that is how it opens exactly what was
                 reviewed. The claim that holds is about what ships. */}
+            {/*
+              **"Delete the account" was an instruction with nothing behind
+              it.** Project deletion ships; deleting a workspace or an account
+              has no surface and is done by hand on request — `/privacy` and
+              the app's danger zone both say so. The point this sentence makes
+              is about portability, not about a button, so it no longer implies
+              one exists.
+            */}
             <p className="mt-3 max-w-[42ch] text-body leading-6 text-secondary">
-              What ships is a file, not a row in our database. Delete the
-              account, run{' '}
+              What ships is a file, not a row in our database. Walk away
+              whenever you like, run{' '}
               <code className="font-mono text-small text-primary">
                 git pull
               </code>

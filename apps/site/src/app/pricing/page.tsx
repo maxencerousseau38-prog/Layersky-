@@ -168,13 +168,28 @@ export default function PricingPage() {
             */}
             <Badge tone="neutral">Not started</Badge>
           </div>
+          {/*
+            **"We have not finished modelling what the service costs" stopped
+            being true.** The model exists — `docs/product/09-unit-economics.md`
+            and `packages/pricing/src/report/cost-model.json`, generated rather
+            than written, with a test asserting the artefact matches its
+            generator. A first production measurement exists too. What is still
+            missing is narrower than "the model", and saying "no model" instead
+            understated the work and overstated the uncertainty at once.
+          */}
           <p className="mt-3 text-prose text-secondary">
-            There is no billing system, and nothing is charged today. We could
-            put plausible numbers on this page — most pre-launch products do —
-            but we have not finished modelling what the service actually costs
-            to run, and quoting a price we might have to raise is precisely the
-            behaviour that made teams start looking for an alternative in the
-            first place.
+            There is no billing system, and nothing is charged today. What it
+            costs us to run is now modelled, and one real workspace run has been
+            measured end to end rather than estimated.
+          </p>
+          <p className="mt-3 text-prose text-secondary">
+            Three things that model does not settle, and a price needs all
+            three. The measured figures are consumption priced at the
+            provider&rsquo;s published rate — they have not been reconciled
+            against an actual supplier invoice. The commercial numbers are not
+            decided. And nobody outside this project has agreed to pay anything,
+            so what the product is worth to a team is still an open question
+            rather than a validated one.
           </p>
           <p className="mt-3 text-prose text-secondary">
             The commitment above is firm regardless of where the numbers land:

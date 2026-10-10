@@ -126,7 +126,11 @@ const STAGES: {
       },
       {
         title: 'Billing',
-        body: 'Plans and payment. No price is published until the cost of running the service is modelled, and that model does not exist yet.',
+        // "That model does not exist yet" was true when written and is not now:
+        // `packages/pricing` generates it and a production run has been
+        // measured. What blocks a price is the commercial decision and the
+        // absence of anyone who has agreed to pay one — not the cost side.
+        body: 'Plans and payment. What the service costs to run is modelled, and one production run has been measured; no price is published because the commercial figures are not decided and no customer has yet agreed to pay one.',
       },
     ],
   },
