@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { dependsOn } from './library.js';
 
 /**
  * Where i18next keeps its catalogues, and how to flatten them.
@@ -26,16 +27,48 @@ import { join } from 'node:path';
  *
  * ## Namespaces
  *
- * `translation.json` is i18next's default namespace and its keys are exposed
- * unprefixed, matching `t('checkout.submit')`. Any other file is a named
- * namespace and its keys are prefixed `namespace:key`, matching
- * `t('common:checkout.submit')` — which is how i18next itself addresses them.
+ * The default namespace's keys are exposed unprefixed, matching
+ * `t('checkout.submit')`. Any other file is a named namespace and its keys are
+ * prefixed `namespace:key`, matching `t('widgets:checkout.submit')` — which is
+ * how i18next itself addresses them.
+ *
+ * Which file is the default is decided once, by `resolveDefaultNamespace`, and
+ * returned as `defaultNamespace` so every reader and writer uses the same
+ * answer. It was a constant, `translation`, and two halves disagreed with it:
+ * next-i18next's default is `common`, and the correction writer sent
+ * unprefixed keys to `common.json` whatever the loader had read.
  */
 
 export type Catalogue = Record<string, string>;
 
-/** i18next's default namespace: its keys carry no prefix. */
+/** i18next's own default namespace, and the answer when nothing says otherwise. */
 const DEFAULT_NAMESPACE = 'translation';
+
+/**
+ * The namespace an unprefixed `t('key')` resolves to, from what is on disk.
+ *
+ * Decided from files rather than read from configuration: `defaultNS` lives in
+ * code this does not execute, and parsing it out of a config file would be a
+ * guess written as a fact. The rules, in order:
+ *
+ * 1. A `translation.json` exists → `translation`, i18next's own default.
+ * 2. The project depends on next-i18next and has a `common.json` → `common`,
+ *    next-i18next's documented default (gethomepage/homepage is this shape).
+ * 3. Exactly one namespace exists → that one; an unprefixed call can mean no
+ *    other file (the i18next fixture is this shape).
+ * 4. Otherwise → `translation`. No file is the default, and every key keeps
+ *    its prefix — the behaviour before this rule existed.
+ */
+export function resolveDefaultNamespace(args: {
+  namespaces: readonly string[];
+  nextI18next: boolean;
+}): string {
+  const present = new Set(args.namespaces);
+  if (present.has(DEFAULT_NAMESPACE)) return DEFAULT_NAMESPACE;
+  if (args.nextI18next && present.has('common')) return 'common';
+  if (present.size === 1) return [...present][0] as string;
+  return DEFAULT_NAMESPACE;
+}
 
 /**
  * `namespace` is joined with nothing; `path` segments are joined with a dot.
@@ -97,9 +130,12 @@ export function flattenCatalogueJson(
 }
 
 /** The namespace prefix a catalogue file's keys carry, from its filename. */
-export function namespacePrefixFor(fileName: string): string {
+export function namespacePrefixFor(
+  fileName: string,
+  defaultNamespace: string = DEFAULT_NAMESPACE,
+): string {
   const namespace = fileName.replace(/\.json$/i, '');
-  return namespace === DEFAULT_NAMESPACE ? '' : `${namespace}:`;
+  return namespace === defaultNamespace ? '' : `${namespace}:`;
 }
 
 function readJson(path: string): unknown {
@@ -137,6 +173,15 @@ export interface LoadedCatalogues {
    * already settled.
    */
   dir: string | null;
+  /**
+   * The namespace whose keys are unprefixed — see `resolveDefaultNamespace`.
+   *
+   * Every consumer passes this on: the base reader keys the base the same way,
+   * the analysis strips an explicit `<default>:` prefix from code-called keys,
+   * and the correction writes an unprefixed key into this file. Meaningless,
+   * and `translation`, in the file-per-locale layout, which has no namespaces.
+   */
+  defaultNamespace: string;
 }
 
 /** What a changed path is, if it is a catalogue at all. */
@@ -149,14 +194,15 @@ export interface CatalogueFile {
 /**
  * Decide whether a changed path is a catalogue, and whose.
  *
- * Takes the directory and layout the load already established rather than
- * re-deriving them, so a repository whose catalogues sit in `locales` cannot be
- * read one way by the loader and another way here.
+ * Takes the directory, layout and default namespace the load already
+ * established rather than re-deriving them, so a repository whose catalogues
+ * sit in `locales` cannot be read one way by the loader and another way here.
  */
 export function classifyCataloguePath(
   dir: string,
   layout: CatalogueLayout,
   path: string,
+  defaultNamespace: string = DEFAULT_NAMESPACE,
 ): CatalogueFile | null {
   const normalised = path.replace(/\\/g, '/');
   if (!normalised.startsWith(`${dir}/`)) return null;
@@ -170,7 +216,7 @@ export function classifyCataloguePath(
     if (rest.length !== 2) return null;
     return {
       locale: rest[0] as string,
-      namespacePrefix: namespacePrefixFor(rest[1] as string),
+      namespacePrefix: namespacePrefixFor(rest[1] as string, defaultNamespace),
     };
   }
 
@@ -197,7 +243,28 @@ interface LoadedLayout {
  * produced 2,710 findings, none of which named the file. Left out and named,
  * the locale is reported as unreadable and nothing about it is invented.
  */
-function loadDirectoryPerLocale(localesDir: string): LoadedLayout {
+/** Every namespace file name present, across all locale directories. */
+function namespacesIn(localesDir: string): string[] {
+  const names = new Set<string>();
+  for (const entry of readdirSync(localesDir)) {
+    const localePath = join(localesDir, entry);
+    try {
+      if (!statSync(localePath).isDirectory()) continue;
+      for (const file of readdirSync(localePath)) {
+        if (file.endsWith('.json')) names.add(file.slice(0, -'.json'.length));
+      }
+    } catch {
+      // An unreadable directory contributes no namespace; it cannot be loaded
+      // either, so it cannot disagree with what is decided here.
+    }
+  }
+  return [...names];
+}
+
+function loadDirectoryPerLocale(
+  localesDir: string,
+  defaultNamespace: string,
+): LoadedLayout {
   const catalogues: Record<string, Catalogue> = {};
   const unreadable: string[] = [];
   for (const entry of readdirSync(localesDir)) {
@@ -217,7 +284,7 @@ function loadDirectoryPerLocale(localesDir: string): LoadedLayout {
       }
       flatten(
         parsed,
-        namespace === DEFAULT_NAMESPACE ? '' : `${namespace}:`,
+        namespace === defaultNamespace ? '' : `${namespace}:`,
         '',
         catalogue,
       );
@@ -275,8 +342,15 @@ export function loadI18nextCatalogues(rootDir: string): LoadedCatalogues {
       }
     });
 
+    const defaultNamespace = hasSubdirectory
+      ? resolveDefaultNamespace({
+          namespaces: namespacesIn(localesDir),
+          nextI18next: dependsOn(rootDir, 'next-i18next'),
+        })
+      : DEFAULT_NAMESPACE;
+
     const loaded = hasSubdirectory
-      ? loadDirectoryPerLocale(localesDir)
+      ? loadDirectoryPerLocale(localesDir, defaultNamespace)
       : loadFilePerLocale(localesDir);
 
     // A directory whose only catalogues are broken is still the directory:
@@ -297,8 +371,15 @@ export function loadI18nextCatalogues(rootDir: string): LoadedCatalogues {
       unreadable: loaded.unreadable.map((path) => `${relativeDir}/${path}`),
       layout: hasSubdirectory ? 'directory-per-locale' : 'file-per-locale',
       dir: relativeDir,
+      defaultNamespace,
     };
   }
 
-  return { catalogues: {}, unreadable: [], layout: null, dir: null };
+  return {
+    catalogues: {},
+    unreadable: [],
+    layout: null,
+    dir: null,
+    defaultNamespace: DEFAULT_NAMESPACE,
+  };
 }

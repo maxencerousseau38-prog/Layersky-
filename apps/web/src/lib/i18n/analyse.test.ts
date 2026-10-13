@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { analysePullRequest } from './analyse';
 import { readBaseCatalogues } from './base-catalogue';
+import { buildCorrection, checkoutReader } from './correct-run';
 
 /**
  * A catalogue that does not parse, end to end through the analysis.
@@ -140,6 +141,7 @@ describe('analysePullRequest with a catalogue that does not parse', () => {
       changedFiles: [HINDI],
       cataloguesDir: 'public/locales',
       layout: 'directory-per-locale',
+      defaultNamespace: 'translation',
       baseSha: 'base',
     });
     const analysis = analysePullRequest({
@@ -150,5 +152,137 @@ describe('analysePullRequest with a catalogue that does not parse', () => {
 
     expect(analysis.report?.findings).toEqual([]);
     expect(analysis.report?.keysChecked).toBe(0);
+  });
+});
+
+/**
+ * The default namespace, end to end: what the code calls, what the analysis
+ * looks up, and which file a correction writes.
+ *
+ * Both halves were measured on real repositories. gethomepage/homepage
+ * (next-i18next, `common.json`) had 173 of its 174 code-called keys reported
+ * missing, because unprefixed calls were looked up against `common:`-prefixed
+ * keys. LAMP-dashboard and noitamap (`translation.json` only) had every
+ * planned correction aimed at a `common.json` that does not exist.
+ */
+describe('analysePullRequest and the default namespace', () => {
+  const HOMEPAGE_PACKAGE = JSON.stringify({
+    dependencies: { 'next-i18next': '^15.0.0', i18next: '^23.0.0' },
+  });
+
+  it("finds an unprefixed call in next-i18next's common.json", () => {
+    const root = repository({
+      'package.json': HOMEPAGE_PACKAGE,
+      'public/locales/en/common.json': JSON.stringify({
+        quicklaunch: { custom: 'Custom', search: 'Search' },
+      }),
+      'public/locales/de/common.json': JSON.stringify({
+        quicklaunch: { custom: 'Benutzerdefiniert', search: 'Suchen' },
+      }),
+      'src/components/quicklaunch.jsx':
+        'export const label = (t) => `${t("quicklaunch.custom")} ${t("quicklaunch.search")}`;\n',
+    });
+
+    const analysis = analysePullRequest({
+      rootDir: root,
+      changedFiles: ['src/components/quicklaunch.jsx'],
+    });
+
+    expect(analysis.report?.keysChecked).toBe(2);
+    expect(analysis.report?.findings).toEqual([]);
+    expect(analysis.audited?.defaultNamespace).toBe('common');
+  });
+
+  it('treats an explicit default-namespace prefix as the same key', () => {
+    const root = repository({
+      'package.json': HOMEPAGE_PACKAGE,
+      'public/locales/en/common.json': JSON.stringify({ a: { b: 'B' } }),
+      'src/x.js': 'export const x = (t) => t("common:a.b");\n',
+    });
+
+    const analysis = analysePullRequest({
+      rootDir: root,
+      changedFiles: ['src/x.js'],
+    });
+
+    expect(analysis.report?.findings).toEqual([]);
+    expect(analysis.audited?.usedKeys).toEqual(['a.b']);
+  });
+
+  /*
+   * Still reported: a key the code calls and no catalogue defines. The rule
+   * must remove false positives, not the true ones next to them.
+   */
+  it('still reports a key that no namespace defines', () => {
+    const root = repository({
+      'package.json': HOMEPAGE_PACKAGE,
+      'public/locales/en/common.json': JSON.stringify({ a: 'A' }),
+      'src/x.js': 'export const x = (t) => t("startSimulation");\n',
+    });
+
+    const analysis = analysePullRequest({
+      rootDir: root,
+      changedFiles: ['src/x.js'],
+    });
+
+    expect(analysis.report?.findings).toEqual([
+      expect.objectContaining({
+        kind: 'missing-source',
+        key: 'startSimulation',
+      }),
+    ]);
+  });
+
+  it('writes a correction into translation.json when that is the default', async () => {
+    const root = repository({
+      'public/locales/en/translation.json': JSON.stringify(
+        { greeting: 'Welcome back, {{name}}!', title: 'Home' },
+        null,
+        2,
+      ),
+      'public/locales/fr/translation.json': `${JSON.stringify({ title: 'Accueil' }, null, 2)}\n`,
+    });
+
+    const analysis = analysePullRequest({
+      rootDir: root,
+      changedFiles: ['public/locales/en/translation.json'],
+      baseCatalogues: { en: { title: 'Home' } },
+    });
+    const audited = analysis.audited;
+    if (!audited || !analysis.report) throw new Error('expected an audit');
+
+    const outcome = await buildCorrection({
+      report: analysis.report,
+      catalogues: audited.catalogues,
+      sourceLocale: 'en',
+      usedKeys: audited.usedKeys,
+      dynamicCallSites: audited.dynamicCallSites,
+      cataloguesDir: audited.cataloguesDir,
+      layout: audited.layout,
+      defaultNamespace: audited.defaultNamespace,
+      readSource: checkoutReader(root),
+      translate: async () => ({
+        translations: [
+          {
+            key: 'greeting',
+            text: 'Bon retour, {{name}} !',
+            confidence: 'confident',
+            question: null,
+          },
+        ],
+        missingKeys: [],
+        failures: [],
+        usage: null,
+      }),
+    });
+
+    expect(outcome.refusal).toBeNull();
+    expect(outcome.files.map((file) => file.path)).toEqual([
+      'public/locales/fr/translation.json',
+    ]);
+    expect(JSON.parse(outcome.files[0]?.content ?? '{}')).toEqual({
+      title: 'Accueil',
+      greeting: 'Bon retour, {{name}} !',
+    });
   });
 });

@@ -52,7 +52,26 @@ export interface AnalysisResult {
      * `planCorrection`.
      */
     unreadable: string[];
+    /**
+     * The namespace whose keys are unprefixed, as the loader decided it. The
+     * correction writes an unprefixed key into this file.
+     */
+    defaultNamespace: string;
   } | null;
+}
+
+/**
+ * A key as the catalogues spell it.
+ *
+ * i18next resolves `t('common:a.b')` and, when `common` is the default
+ * namespace, `t('a.b')` to the same string. The catalogues spell the default
+ * namespace's keys without a prefix, so an explicit `<default>:` prefix in code
+ * is removed here — otherwise a call written the long way would be reported
+ * missing next to the very key it names.
+ */
+function asCatalogueKey(key: string, defaultNamespace: string): string {
+  const prefix = `${defaultNamespace}:`;
+  return key.startsWith(prefix) ? key.slice(prefix.length) : key;
 }
 
 export interface AnalyseArgs {
@@ -205,7 +224,11 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
     }
   }
 
-  const usedKeys = [...new Set([...distinctKeys(scan), ...fromCatalogues])];
+  const { defaultNamespace } = catalogues;
+  const calledKeys = distinctKeys(scan).map((key) =>
+    asCatalogueKey(key, defaultNamespace),
+  );
+  const usedKeys = [...new Set([...calledKeys, ...fromCatalogues])];
 
   return {
     report: auditI18n({
@@ -224,6 +247,7 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
       cataloguesDir,
       layout,
       unreadable: catalogues.unreadable,
+      defaultNamespace,
     },
   };
 }

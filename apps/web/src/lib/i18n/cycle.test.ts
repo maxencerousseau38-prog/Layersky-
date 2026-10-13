@@ -84,10 +84,15 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
  *
  * Read through `loadI18nextCatalogues`, the same loader the analysis uses,
  * rather than flattened by hand here. The first version of this helper did
- * flatten by hand and produced `app.title` where the loader produces
+ * flatten by hand and produced `app.title` where the loader then produced
  * `common:app.title` — so every pre-existing key looked both deleted and
  * newly added, and the analysis correctly reported four `missing-source`
  * findings about keys that were fine.
+ *
+ * The loader now produces `app.title` for this fixture: its only namespace,
+ * `common`, is its default namespace (see `resolveDefaultNamespace`). The
+ * lesson stands, and is why this helper still asks the loader rather than
+ * spelling the keys itself.
  *
  * The bug was in the test, and `apps/web/src/lib/i18n/base-catalogue.ts` was
  * checked before this was changed: it passes `namespacePrefix` into
@@ -144,6 +149,7 @@ describe('the correction cycle, on the fixture shape', () => {
       dynamicCallSites: 0,
       cataloguesDir: 'locales',
       layout: 'directory-per-locale',
+      defaultNamespace: first.audited?.defaultNamespace as string,
       readSource: checkoutReader(root),
       charge: async (units) => {
         spend.push(`charge:${units}`);
@@ -263,6 +269,7 @@ describe('the correction cycle, on the fixture shape', () => {
       dynamicCallSites: 0,
       cataloguesDir: 'locales',
       layout: 'directory-per-locale',
+      defaultNamespace: analysis.audited?.defaultNamespace as string,
       readSource: checkoutReader(root),
       translate: async ({ strings }) => ({
         translations: strings.map((s) => ({
@@ -329,6 +336,7 @@ describe('the correction cycle, on the fixture shape', () => {
       dynamicCallSites: 0,
       cataloguesDir: 'locales',
       layout: 'directory-per-locale',
+      defaultNamespace: analysis.audited?.defaultNamespace as string,
       readSource: checkoutReader(root),
       charge: async () => {
         throw new Error(

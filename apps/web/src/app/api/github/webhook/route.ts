@@ -337,6 +337,7 @@ async function handleDelivery(
             changedFiles,
             cataloguesDir: located.dir,
             layout: located.layout,
+            defaultNamespace: located.defaultNamespace,
             baseSha: decision.baseSha,
           })
         : { catalogues: null, touched: [], unreadable: [] };
@@ -581,6 +582,7 @@ async function correct(args: {
       dynamicCallSites: args.audited.dynamicCallSites,
       cataloguesDir: args.audited.cataloguesDir,
       layout: args.audited.layout,
+      defaultNamespace: args.audited.defaultNamespace,
       readSource: checkoutReader(args.checkoutDir),
       translate: translateBatch({ apiUrl, apiToken }),
       /*
