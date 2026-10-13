@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { type CacheRow, splitPending, usableCache } from './resume';
+import {
+  type CacheRow,
+  cacheableRows,
+  splitPending,
+  usableCache,
+} from './resume';
 
 const row = (over: Partial<CacheRow> = {}): CacheRow => ({
   locale: 'de',
@@ -113,5 +118,50 @@ describe('splitPending', () => {
   it('treats an empty cache map as no cache at all', () => {
     const { toTranslate } = splitPending(pending, new Map());
     expect(toTranslate).toHaveLength(3);
+  });
+});
+
+describe('cacheableRows', () => {
+  const confident = {
+    key: 'checkout.submit',
+    text: 'Bestellung abschließen',
+    confidence: 'confident' as const,
+  };
+  const ambiguous = {
+    key: 'greeting',
+    text: 'Willkommen zurück',
+    confidence: 'ambiguous' as const,
+  };
+  const fresh = { ...FRESH, greeting: 'Welcome back' };
+
+  it('banks a confident translation with the source text it answered', () => {
+    expect(cacheableRows([confident], fresh)).toEqual([
+      {
+        translation_key: 'checkout.submit',
+        source_text: 'Complete your order',
+        translated_text: 'Bestellung abschließen',
+      },
+    ]);
+  });
+
+  /*
+   * Invariant 4. The cache keeps no confidence and no question, and escalations
+   * are raised only from a fresh model response. A run cut off after banking an
+   * ambiguous proposal would hand it to the next click as an ordinary hit, and
+   * that click would commit it with nobody having answered the question.
+   * Re-buying the key is the price of asking again.
+   */
+  it('never banks an ambiguous translation', () => {
+    expect(cacheableRows([confident, ambiguous], fresh)).toEqual([
+      expect.objectContaining({ translation_key: 'checkout.submit' }),
+    ]);
+  });
+
+  /*
+   * A row with an empty source text can never be a hit — `usableCache` compares
+   * against the freshly extracted text — so writing it only spends a row.
+   */
+  it('does not bank a key with no extracted source text', () => {
+    expect(cacheableRows([{ ...confident, key: 'gone' }], fresh)).toEqual([]);
   });
 });
