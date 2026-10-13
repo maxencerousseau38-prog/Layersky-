@@ -48,6 +48,14 @@ export interface AuditInput {
    * it could not look at instead of implying it looked at everything.
    */
   dynamicCallSites?: number;
+  /**
+   * Catalogue files that were found but did not parse, repository-relative.
+   *
+   * Their locales are absent from `catalogues`: an unparseable file is not an
+   * empty one. Carried into the report for the same reason as the dynamic
+   * call sites — the reader must be told what was not looked at.
+   */
+  unreadableCatalogues?: readonly string[];
 }
 
 export type FindingKind =
@@ -80,6 +88,12 @@ export interface AuditReport {
    * files. Reported as a number only. See the note above on why.
    */
   unreferencedSourceKeys: number;
+  /**
+   * Catalogue files that did not parse, so their locales were not checked.
+   *
+   * Optional so a report built elsewhere stays valid; absent means none.
+   */
+  unreadableCatalogues?: string[];
 }
 
 /**
@@ -206,10 +220,19 @@ export function auditI18n(input: AuditInput): AuditReport {
     localesChecked: targetLocales,
     dynamicCallSites: input.dynamicCallSites ?? 0,
     unreferencedSourceKeys,
+    unreadableCatalogues: [...(input.unreadableCatalogues ?? [])],
   };
 }
 
-/** Whether a report should fail a check, as one place rather than scattered. */
+/**
+ * Whether a report should fail a check, as one place rather than scattered.
+ *
+ * A catalogue that did not parse is not a pass: that language was never
+ * checked, and i18next will fail to load it at runtime.
+ */
 export function auditPasses(report: AuditReport): boolean {
-  return report.findings.length === 0;
+  return (
+    report.findings.length === 0 &&
+    (report.unreadableCatalogues?.length ?? 0) === 0
+  );
 }

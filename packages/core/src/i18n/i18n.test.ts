@@ -228,4 +228,39 @@ describe('loadI18nextCatalogues', () => {
     expect(loaded.catalogues.fr).toBeUndefined();
     expect(loaded.unreadable).toContain('locales/fr.json');
   });
+
+  /*
+   * The same rule in the directory-per-locale layout, where it did not hold.
+   * The broken file was skipped but its locale was still registered — empty —
+   * and nothing was named. LAMP-dashboard #863 left `hi/translation.json` with
+   * a trailing comma, and that empty locale turned every Hindi key into a
+   * removed one: 2,710 findings on a pull request that changed eleven lines,
+   * none of them saying the file no longer parsed.
+   */
+  it('leaves a locale out, and names its file, when a file in its directory does not parse', () => {
+    const dir = project({
+      'public/locales/en/translation.json': JSON.stringify({ a: 'A', b: 'B' }),
+      'public/locales/hi/translation.json': '{\n"a": "ए",\n"b": "बी",\n}\n',
+    });
+    const loaded = loadI18nextCatalogues(dir);
+    expect(loaded.catalogues.en).toEqual({ a: 'A', b: 'B' });
+    expect(loaded.catalogues.hi).toBeUndefined();
+    expect(loaded.unreadable).toEqual(['public/locales/hi/translation.json']);
+  });
+
+  /*
+   * One broken namespace makes the whole locale unknown, not partly known. Its
+   * other files are readable, but a locale missing a namespace's keys is
+   * exactly the empty-means-missing confusion this rule exists to prevent.
+   */
+  it('leaves the whole locale out when one of its namespaces does not parse', () => {
+    const dir = project({
+      'locales/en/common.json': JSON.stringify({ a: 'A' }),
+      'locales/fr/common.json': JSON.stringify({ a: 'Á' }),
+      'locales/fr/extra.json': '{ broken',
+    });
+    const loaded = loadI18nextCatalogues(dir);
+    expect(loaded.catalogues.fr).toBeUndefined();
+    expect(loaded.unreadable).toEqual(['locales/fr/extra.json']);
+  });
 });

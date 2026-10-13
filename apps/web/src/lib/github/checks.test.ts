@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CHECK_NAME,
   buildCheckOutput,
+  checkConclusion,
   describeCorrection,
   publishAnalysisFailure,
   publishCheck,
@@ -18,6 +19,44 @@ const report = (over: Partial<AuditReport> = {}): AuditReport => ({
 });
 
 describe('buildCheckOutput', () => {
+  /*
+   * A catalogue that does not parse is the most actionable thing on the pull
+   * request — i18next will fail to load that language at runtime — and before
+   * this it was named nowhere. It must be named, and must never sit under a
+   * green "No i18n problems found".
+   */
+  describe('with a catalogue that does not parse', () => {
+    const broken = report({
+      unreadableCatalogues: ['public/locales/hi/translation.json'],
+    });
+
+    it('names the file and does not claim a clean pass', () => {
+      const output = buildCheckOutput(broken);
+      expect(output.title).not.toBe('No i18n problems found');
+      expect(output.summary).toContain('public/locales/hi/translation.json');
+      expect(output.summary).toMatch(/not valid JSON/i);
+    });
+
+    it('is neutral, never success', () => {
+      expect(checkConclusion(broken, null)).toBe('neutral');
+    });
+
+    it('names it alongside findings too', () => {
+      const output = buildCheckOutput({
+        ...broken,
+        findings: [
+          {
+            kind: 'missing-translation',
+            key: 'a',
+            locale: 'fr',
+            detail: '`a` has no `fr` translation.',
+          },
+        ],
+      });
+      expect(output.summary).toContain('public/locales/hi/translation.json');
+    });
+  });
+
   it('states what it checked on a pass, not just that it passed', () => {
     const output = buildCheckOutput(report());
     expect(output.title).toBe('No i18n problems found');
