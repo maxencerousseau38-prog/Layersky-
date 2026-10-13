@@ -1,4 +1,5 @@
 import type { AuditReport, Finding } from '@localize-infra/eval';
+import { CORRECTABLE_LOCALE_DIRS } from '@localize-infra/schemas';
 
 /**
  * What a corrective pull request would contain, decided before anything is
@@ -251,16 +252,16 @@ export function acceptedTranslations(args: {
 /**
  * Whether `/v1/open-pr` will accept writes to this catalogue directory.
  *
- * That route's path allow-list requires the first segment to be exactly
- * `locales`, because its only legitimate purpose is writing locale files and
- * a denylist would still let a caller steer it at `.github/workflows`. The
- * loader, meanwhile, also finds catalogues in `public/locales` and
- * `src/locales`.
+ * Read from the route's own allow-list, `CORRECTABLE_LOCALE_DIRS`, rather than
+ * kept here as a second copy. It was the literal `locales` while the loader
+ * also reads `public/locales` and `src/locales`, so on every real repository
+ * measured the analysis ran and the correction never could.
  *
- * So a repository can be analysed and still not be correctable, and this is
- * where that is said out loud rather than discovered as a 400 from the API
- * after the translations have been paid for.
+ * Still asked before anything is spent: a directory outside the list is
+ * refused with a sentence, rather than discovered as a 400 from the API after
+ * the translations have been paid for. **The API must be deployed with the
+ * widened list before this side is** — `apps/api` does not deploy on merge.
  */
 export function correctableDirectory(cataloguesDir: string): boolean {
-  return cataloguesDir === 'locales';
+  return (CORRECTABLE_LOCALE_DIRS as readonly string[]).includes(cataloguesDir);
 }

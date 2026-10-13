@@ -1,4 +1,5 @@
 import type { AuditReport, Finding } from '@localize-infra/eval';
+import { OpenPrFileSchema } from '@localize-infra/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import {
   cataloguePath,
@@ -334,13 +335,67 @@ describe('cataloguePath', () => {
 });
 
 describe('correctableDirectory', () => {
-  // `/v1/open-pr` only accepts paths under `locales/`, so a repository whose
-  // catalogues sit elsewhere is analysable and not correctable.
-  it('accepts only the directory the pull-request API will write to', () => {
+  /*
+   * This asserted `public/locales` and `src/locales` were *not* correctable,
+   * which was true of the API and made the product useless on real
+   * repositories: of twelve public i18next projects measured, none kept its
+   * catalogues in a root `locales/`. The three directories the loader reads
+   * are now the three the API writes to.
+   */
+  it('accepts the three directories the loader reads', () => {
     expect(correctableDirectory('locales')).toBe(true);
-    expect(correctableDirectory('public/locales')).toBe(false);
-    expect(correctableDirectory('src/locales')).toBe(false);
+    expect(correctableDirectory('public/locales')).toBe(true);
+    expect(correctableDirectory('src/locales')).toBe(true);
   });
+
+  it('refuses a directory the loader does not read', () => {
+    expect(correctableDirectory('app/locales')).toBe(false);
+    expect(correctableDirectory('shared/i18n/locales')).toBe(false);
+    expect(correctableDirectory('public')).toBe(false);
+  });
+
+  /*
+   * The contract that makes "correctable" mean something. A directory this
+   * calls correctable must produce paths `/v1/open-pr` accepts, in both
+   * layouts and for any namespace — otherwise the correction is planned,
+   * charged and translated, and then refused with a 400 at the last step.
+   * That is the failure this function exists to prevent, so it is pinned to
+   * the API's own schema rather than to a second list kept by hand.
+   */
+  it.each(['locales', 'public/locales', 'src/locales'])(
+    'produces only paths the pull-request API accepts, under %s',
+    (dir) => {
+      const paths = [
+        cataloguePath({
+          dir,
+          layout: 'directory-per-locale',
+          locale: 'pt-BR',
+          namespacePrefix: '',
+          defaultNamespace: 'translation',
+        }),
+        cataloguePath({
+          dir,
+          layout: 'directory-per-locale',
+          locale: 'fr',
+          namespacePrefix: 'widgets:',
+          defaultNamespace: 'common',
+        }),
+        cataloguePath({
+          dir,
+          layout: 'file-per-locale',
+          locale: 'de',
+          namespacePrefix: '',
+          defaultNamespace: 'translation',
+        }),
+      ];
+      for (const path of paths) {
+        expect(
+          OpenPrFileSchema.safeParse({ path, content: '{}' }).success,
+          path,
+        ).toBe(true);
+      }
+    },
+  );
 });
 
 describe('buildCorrection', () => {
