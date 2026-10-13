@@ -31,6 +31,12 @@ export interface BaseCatalogueArgs {
   changedFiles: readonly string[];
   cataloguesDir: string;
   layout: CatalogueLayout;
+  /**
+   * The loader's `defaultNamespace`, so the base is keyed exactly as the head.
+   * Required, not defaulted: a base keyed `common:x` against a head keyed `x`
+   * would make every key look removed under one name and added under another.
+   */
+  defaultNamespace: string;
   baseSha: string;
 }
 
@@ -63,7 +69,12 @@ export async function readBaseCatalogues(
   const touched: { path: string; locale: string; namespacePrefix: string }[] =
     [];
   for (const path of args.changedFiles) {
-    const info = classifyCataloguePath(args.cataloguesDir, args.layout, path);
+    const info = classifyCataloguePath(
+      args.cataloguesDir,
+      args.layout,
+      path,
+      args.defaultNamespace,
+    );
     if (info) touched.push({ path, ...info });
   }
 

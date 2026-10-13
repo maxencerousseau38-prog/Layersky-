@@ -178,6 +178,65 @@ describe('loadI18nextCatalogues', () => {
       a: 'A',
       'common:b': 'B',
     });
+    expect(loadI18nextCatalogues(dir).defaultNamespace).toBe('translation');
+  });
+
+  /*
+   * The default namespace, decided once from the files and reported, so the
+   * code scan, the base reader and the correction writer all speak it.
+   *
+   * gethomepage/homepage uses next-i18next with one `common.json` per locale,
+   * and its code calls `t("quicklaunch.custom")` unprefixed — next-i18next's
+   * default namespace is `common`. The loader assumed i18next's `translation`,
+   * indexed the key as `common:quicklaunch.custom`, and 173 of the 174 keys the
+   * code called were reported missing from English.
+   */
+  it("treats next-i18next's common.json as the default namespace", () => {
+    const dir = project({
+      'package.json': JSON.stringify({
+        dependencies: { 'next-i18next': '^15.0.0', i18next: '^23.0.0' },
+      }),
+      'public/locales/en/common.json': JSON.stringify({
+        quicklaunch: { custom: 'Custom' },
+      }),
+      'public/locales/en/widgets.json': JSON.stringify({ title: 'W' }),
+    });
+    const loaded = loadI18nextCatalogues(dir);
+    expect(loaded.defaultNamespace).toBe('common');
+    expect(loaded.catalogues.en).toEqual({
+      'quicklaunch.custom': 'Custom',
+      'widgets:title': 'W',
+    });
+  });
+
+  /*
+   * One namespace and no `translation.json`: an unprefixed `t('x')` can only
+   * mean that file — it is the only one there is. The i18next fixture is this
+   * shape (`locales/<lng>/common.json`, `defaultNS: 'common'`).
+   */
+  it('treats the only namespace as the default one', () => {
+    const dir = project({
+      'locales/en/common.json': JSON.stringify({ app: { title: 'Acme' } }),
+      'locales/fr/common.json': JSON.stringify({ app: { title: 'Acmé' } }),
+    });
+    const loaded = loadI18nextCatalogues(dir);
+    expect(loaded.defaultNamespace).toBe('common');
+    expect(loaded.catalogues.fr).toEqual({ 'app.title': 'Acmé' });
+  });
+
+  /*
+   * Several namespaces, no `translation.json`, no next-i18next: nothing on
+   * disk says which one is the default, so none is assumed and every key
+   * keeps its prefix — the behaviour before this rule existed.
+   */
+  it('assumes no default when several namespaces leave it open', () => {
+    const dir = project({
+      'locales/en/chat.json': JSON.stringify({ a: 'A' }),
+      'locales/en/common.json': JSON.stringify({ b: 'B' }),
+    });
+    const loaded = loadI18nextCatalogues(dir);
+    expect(loaded.defaultNamespace).toBe('translation');
+    expect(loaded.catalogues.en).toEqual({ 'chat:a': 'A', 'common:b': 'B' });
   });
 
   it('reads a file per locale', () => {
@@ -216,6 +275,7 @@ describe('loadI18nextCatalogues', () => {
       // against its base must be unable to classify any path as a catalogue
       // when none were found.
       dir: null,
+      defaultNamespace: 'translation',
     });
   });
 

@@ -71,7 +71,24 @@ describe('readBaseCatalogues', () => {
     cataloguesDir: 'locales',
     layout: 'directory-per-locale' as const,
     baseSha: 'base123',
+    // A repository with several namespaces and a translation.json default,
+    // so `common.json` keys keep their prefix in the cases below.
+    defaultNamespace: 'translation',
   };
+
+  /*
+   * The base must be keyed the way the head is. If the head reads `common.json`
+   * as the default namespace and the base did not, every key would look
+   * removed under one name and added under the other.
+   */
+  it('reads the default namespace without a prefix, as the head does', async () => {
+    const result = await readBaseCatalogues({
+      ...args,
+      defaultNamespace: 'common',
+      fetchFile: vi.fn(async () => JSON.stringify({ app: { title: 'Acme' } })),
+    });
+    expect(result.catalogues).toEqual({ en: { 'app.title': 'Acme' } });
+  });
 
   it('fetches the catalogues the PR touched, keyed by locale', async () => {
     const fetchFile = vi.fn(async () =>

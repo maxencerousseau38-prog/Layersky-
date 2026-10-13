@@ -27,10 +27,19 @@ export function cataloguePath(args: {
   locale: string;
   /** '' for the default namespace, else `ns:`. */
   namespacePrefix: string;
+  /**
+   * The file an unprefixed key lives in — the loader's `defaultNamespace`.
+   *
+   * It was the literal `common`, which matched the i18next fixture and nothing
+   * that loader reads by default: on LAMP-dashboard and noitamap, which only
+   * have `translation.json`, every planned correction aimed at a `common.json`
+   * that does not exist. A key is written back into the file it was read from.
+   */
+  defaultNamespace: string;
 }): string {
   const namespace = args.namespacePrefix
     ? args.namespacePrefix.slice(0, -1)
-    : 'common';
+    : args.defaultNamespace;
   return args.layout === 'directory-per-locale'
     ? `${args.dir}/${args.locale}/${namespace}.json`
     : `${args.dir}/${args.locale}.json`;

@@ -93,6 +93,12 @@ function hasDependency(pkg: PackageJson, name: string): boolean {
   );
 }
 
+/** Whether the root manifest lists `name`, in either dependency map. */
+export function dependsOn(rootDir: string, name: string): boolean {
+  const pkg = readPackageJson(rootDir);
+  return pkg ? hasDependency(pkg, name) : false;
+}
+
 export function detectI18nLibrary(rootDir: string): I18nLibrary | null {
   const pkg = readPackageJson(rootDir);
   if (!pkg) return null;

@@ -1,6 +1,11 @@
 import type { AuditReport, Finding } from '@localize-infra/eval';
 import { describe, expect, it, vi } from 'vitest';
-import { detectIndent, insertKeys, splitKey } from './catalogue-file';
+import {
+  cataloguePath,
+  detectIndent,
+  insertKeys,
+  splitKey,
+} from './catalogue-file';
 import {
   MAX_CORRECTION_UNITS,
   applyTranslations,
@@ -251,6 +256,39 @@ describe('splitKey', () => {
   });
 });
 
+describe('cataloguePath', () => {
+  /*
+   * An unprefixed key belongs to the default namespace's file — the one the
+   * loader read it from. It was always `common.json`, so on LAMP-dashboard and
+   * noitamap, which only have `translation.json`, every planned correction
+   * aimed at a file that does not exist.
+   */
+  it("writes an unprefixed key into the default namespace's file", () => {
+    const at = (defaultNamespace: string) =>
+      cataloguePath({
+        dir: 'public/locales',
+        layout: 'directory-per-locale',
+        locale: 'fr',
+        namespacePrefix: '',
+        defaultNamespace,
+      });
+    expect(at('translation')).toBe('public/locales/fr/translation.json');
+    expect(at('common')).toBe('public/locales/fr/common.json');
+  });
+
+  it('writes a prefixed key into its own namespace file, whatever the default', () => {
+    expect(
+      cataloguePath({
+        dir: 'locales',
+        layout: 'directory-per-locale',
+        locale: 'fr',
+        namespacePrefix: 'widgets:',
+        defaultNamespace: 'translation',
+      }),
+    ).toBe('locales/fr/widgets.json');
+  });
+});
+
 describe('correctableDirectory', () => {
   // `/v1/open-pr` only accepts paths under `locales/`, so a repository whose
   // catalogues sit elsewhere is analysable and not correctable.
@@ -274,6 +312,8 @@ describe('buildCorrection', () => {
     dynamicCallSites: 0,
     cataloguesDir: 'locales',
     layout: 'directory-per-locale' as const,
+    // The fixture's shape: one `common.json` per locale, the default namespace.
+    defaultNamespace: 'common',
   };
   const frFile = `{\n  "auth": {\n    "signIn": "Se connecter"\n  }\n}\n`;
 
@@ -409,6 +449,7 @@ describe('buildCorrection, charged before the model', () => {
     dynamicCallSites: 0,
     cataloguesDir: 'locales',
     layout: 'directory-per-locale' as const,
+    defaultNamespace: 'common',
     readSource: async () => `{\n  "app": {}\n}\n`,
   };
 
@@ -749,6 +790,7 @@ describe('buildCorrection, six asked for and five written', () => {
     dynamicCallSites: 0,
     cataloguesDir: 'locales',
     layout: 'directory-per-locale' as const,
+    defaultNamespace: 'common',
     readSource: async () => `{\n  "errors": {}\n}\n`,
   };
 

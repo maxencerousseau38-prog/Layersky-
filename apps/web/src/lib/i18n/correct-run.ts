@@ -227,6 +227,8 @@ export async function buildCorrection(args: {
   dynamicCallSites: number;
   cataloguesDir: string;
   layout: CatalogueLayout;
+  /** The loader's `defaultNamespace`: where an unprefixed key is written. */
+  defaultNamespace: string;
   /** Reads a catalogue file from the checkout. Repository-relative path. */
   readSource: (path: string) => Promise<string | null>;
   translate: TranslateFn;
@@ -478,6 +480,7 @@ export async function buildCorrection(args: {
       layout: args.layout,
       locale: unit.locale,
       namespacePrefix,
+      defaultNamespace: args.defaultNamespace,
     });
     byFile.set(file, [...(byFile.get(file) ?? []), { unit, path }]);
   }
@@ -536,6 +539,7 @@ export async function buildCorrection(args: {
       layout: args.layout,
       locale: unit.locale,
       namespacePrefix,
+      defaultNamespace: args.defaultNamespace,
     });
     return written.has(tupleKey(file, path.join('.')));
   });
