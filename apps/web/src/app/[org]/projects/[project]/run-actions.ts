@@ -27,6 +27,7 @@ import {
   qualityBlock,
 } from '@/lib/runs/quality';
 import {
+  cacheableRows,
   clearResumeCache,
   readResumeCache,
   saveResumeCache,
@@ -582,16 +583,16 @@ export async function startRun(
            * request — can still be cut off by the platform timeout, and until
            * now that cut threw this locale's paid-for output away. From here it
            * survives, and the next click resumes instead of re-buying.
+           *
+           * Confident translations only: a cache hit raises no escalation, so
+           * an ambiguous one banked here would reach a pull request unasked.
+           * `cacheableRows` carries the argument and its test.
            */
           await saveResumeCache(
             supabase,
             project.id,
             locale,
-            body.translations.map((entry) => ({
-              translation_key: entry.key,
-              source_text: fresh[entry.key] ?? '',
-              translated_text: entry.text,
-            })),
+            cacheableRows(body.translations, fresh),
           );
           keysMissing += body.missingKeys.length;
 

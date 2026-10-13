@@ -91,6 +91,42 @@ export function splitPending<T extends { key: string }>(
 }
 
 /**
+ * What one model response may bank for a later run.
+ *
+ * **Never an ambiguous translation.** The cache keeps no confidence and no
+ * question, and escalations are raised only from a fresh model response. A run
+ * cut off by the timeout after banking an ambiguous proposal would hand it to
+ * the next click as an ordinary hit, and that click would commit it with nobody
+ * having answered the question — invariant 4, bypassed by the feature that
+ * exists to survive the timeout. Leaving it out means the next run re-buys that
+ * key and the model asks again, which is the behaviour before this cache.
+ *
+ * A key with no extracted source text is left out too: `usableCache` compares
+ * against the freshly extracted text, so such a row could never be a hit.
+ */
+export function cacheableRows(
+  translations: readonly {
+    key: string;
+    text: string;
+    confidence: 'confident' | 'ambiguous';
+  }[],
+  fresh: Readonly<Record<string, string>>,
+): { translation_key: string; source_text: string; translated_text: string }[] {
+  const rows = [];
+  for (const entry of translations) {
+    if (entry.confidence !== 'confident') continue;
+    const source = fresh[entry.key];
+    if (source === undefined) continue;
+    rows.push({
+      translation_key: entry.key,
+      source_text: source,
+      translated_text: entry.text,
+    });
+  }
+  return rows;
+}
+
+/**
  * Read the cache for one project.
  *
  * Returns an empty cache on any failure, and that is deliberate: a cache that
