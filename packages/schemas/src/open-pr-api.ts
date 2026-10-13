@@ -3,9 +3,8 @@ import { z } from 'zod';
 // This service's only legitimate purpose is writing locale JSON files, so
 // path validation is a positive allowlist rather than a denylist: every path
 // segment must match a restrictive safe-character set, the path must end
-// in `.json`, and the first segment must be exactly `locales` (every
-// framework's `localesDir` is hardcoded to that literal — see
-// packages/core/src/detect/index.ts). This is stricter than (and subsumes)
+// in `.json`, and the path must start with one of `CORRECTABLE_LOCALE_DIRS`,
+// compared segment by segment. This is stricter than (and subsumes)
 // simply rejecting `..`/`.` segments, absolute POSIX paths, and absolute
 // Windows paths (drive letters like `C:\` or `C:/`) — a pure traversal
 // denylist still lets a caller steer the PR at arbitrary in-repo files like
@@ -13,12 +12,43 @@ import { z } from 'zod';
 // outside the repo but are still far outside the intended locale directory.
 // The traversal-specific checks are kept below for defense-in-depth/clarity
 // even though the segment allowlist, `.json` suffix requirement, and
-// `locales/` root restriction already rule them out. Backslashes are
+// root restriction already rule them out. Backslashes are
 // rejected outright rather than treated as a separator: git tree paths are
 // always forward-slash-separated regardless of OS, so no legitimate path
 // needs one, and a backslash could otherwise be used to smuggle a traversal
 // segment past the `/`-based split below (e.g. `locales\..\..\secret.json`).
 const SAFE_PATH_SEGMENT = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * The catalogue directories a pull request may write into — exactly the ones
+ * the i18next loader reads (`packages/core/src/i18n/catalogue.ts`), in the same
+ * order.
+ *
+ * It was `locales` alone, the literal every legacy framework detector uses.
+ * The health check reads `public/locales` and `src/locales` too, so a
+ * repository could be analysed and never corrected; on twelve public i18next
+ * projects measured, none kept its catalogues in a root `locales/`. Each entry
+ * is still an exact root, so `contents: write` reaches catalogue JSON and
+ * nothing beside it — `public/manifest.json` and `src/config.json` stay out.
+ *
+ * Exported so a caller deciding "correctable" — `apps/web`'s
+ * `correctableDirectory` — can read this list instead of keeping a second copy
+ * that could disagree with what this schema accepts.
+ */
+export const CORRECTABLE_LOCALE_DIRS = [
+  'public/locales',
+  'locales',
+  'src/locales',
+] as const;
+
+/** Whether `segments` begins with `root`'s segments and continues past it. */
+function startsWithRoot(segments: readonly string[], root: string): boolean {
+  const rootSegments = root.split('/');
+  return (
+    segments.length > rootSegments.length &&
+    rootSegments.every((segment, index) => segments[index] === segment)
+  );
+}
 
 function isSafeRelativePath(path: string): boolean {
   if (path.length === 0 || path.trim().length === 0) return false;
@@ -28,7 +58,9 @@ function isSafeRelativePath(path: string): boolean {
   if (/^[a-zA-Z]:/.test(path)) return false;
   if (!path.endsWith('.json')) return false;
   const segments = path.split('/');
-  if (segments[0] !== 'locales') return false;
+  if (!CORRECTABLE_LOCALE_DIRS.some((root) => startsWithRoot(segments, root))) {
+    return false;
+  }
   return segments.every(
     (segment) =>
       segment !== '.' && segment !== '..' && SAFE_PATH_SEGMENT.test(segment),
@@ -38,7 +70,7 @@ function isSafeRelativePath(path: string): boolean {
 export const OpenPrFileSchema = z.object({
   path: z.string().min(1).refine(isSafeRelativePath, {
     message:
-      'path must be a relative, forward-slash-separated path under "locales/" ending in ".json", with every segment restricted to [A-Za-z0-9._-] and no "." or ".." segments, leading "/", or drive letter',
+      'path must be a relative, forward-slash-separated path under "public/locales/", "locales/" or "src/locales/" ending in ".json", with every segment restricted to [A-Za-z0-9._-] and no "." or ".." segments, leading "/", or drive letter',
   }),
   content: z.string(),
 });

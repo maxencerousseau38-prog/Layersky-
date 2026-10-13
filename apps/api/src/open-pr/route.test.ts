@@ -226,6 +226,38 @@ describe('openPrRouteHandler', () => {
     expect(result.status).toBe(400);
   });
 
+  /*
+   * The route the correction actually reaches, through the same real package
+   * resolution as the test above — so a stale `packages/schemas/dist` that
+   * still only knows `locales/` fails here rather than in production, after a
+   * correction has been paid for.
+   */
+  it.each([
+    'public/locales/fr/translation.json',
+    'src/locales/fr/translation.json',
+  ])('opens a pull request that writes %s', async (path) => {
+    const ops = fakeOps();
+    const result = await openPrRouteHandler(
+      { ...validBody, files: [{ path, content: '{}' }] },
+      config,
+      ops,
+    );
+    expect(result.status).toBe(200);
+    expect(ops.openPr).toHaveBeenCalledTimes(1);
+  });
+
+  it('still refuses a path beside an allowed root', async () => {
+    const result = await openPrRouteHandler(
+      {
+        ...validBody,
+        files: [{ path: 'public/manifest.json', content: '{}' }],
+      },
+      config,
+      fakeOps(),
+    );
+    expect(result.status).toBe(400);
+  });
+
   it('does not leak the underlying error message to the caller on failure', async () => {
     const distinctiveMessage =
       'installation token abc123 lacks permission on repo xyz-internal';
