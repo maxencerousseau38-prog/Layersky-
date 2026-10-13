@@ -1,6 +1,7 @@
 'use client';
 
 import { DataFilter, DataSearch, DataToolbar } from '@/components/data-toolbar';
+import { checkState, matchesHealthFilter } from '@/lib/i18n/check-state';
 import { useTableQuery } from '@/lib/use-table-query';
 import {
   EmptyState,
@@ -13,7 +14,6 @@ import {
   TR,
   Table,
   TableEmpty,
-  type Tone,
 } from '@localize-infra/ui';
 import { GitPullRequest } from 'lucide-react';
 import Link from 'next/link';
@@ -46,28 +46,8 @@ export interface HealthTableRow {
   createdAt: string;
 }
 
-/**
- * The tone of a check, which is not the tone of its GitHub conclusion.
- *
- * GitHub has one `neutral` for both "found problems" and "could not look", and
- * DESIGN.md §6.3 separates them. A check that found something has a real,
- * present, degraded state. A check that read nothing has no state to report and
- * takes no colour — painting it amber would assert behaviour about a repository
- * nothing was read from, which is the exact failure the product sells against.
- */
-export function checkState(row: {
-  skipped: boolean;
-  findingCount: number;
-}): { tone: Tone; label: string } {
-  if (row.skipped) return { tone: 'neutral', label: 'Not analysed' };
-  if (row.findingCount === 0)
-    return { tone: 'confident', label: 'No problems' };
-  return {
-    tone: 'degraded',
-    label: `${row.findingCount} problem${row.findingCount === 1 ? '' : 's'}`,
-  };
-}
-
+// The decision lives in `lib/i18n/check-state.ts`, where it is unit-tested;
+// this file only arranges it.
 const FILTERS = [
   { value: 'all', label: 'All' },
   { value: 'problems', label: 'Problems' },
@@ -98,13 +78,7 @@ export function HealthTable({
     const order = (row: HealthTableRow, index: number) =>
       sort === 'problems' ? row.findingCount : checks.length - index;
 
-    const keep = (row: HealthTableRow) => {
-      if (filter === 'problems') return row.findingCount > 0;
-      if (filter === 'fixable') return row.correctable > 0;
-      if (filter === 'clean') return !row.skipped && row.findingCount === 0;
-      if (filter === 'skipped') return row.skipped;
-      return true;
-    };
+    const keep = (row: HealthTableRow) => matchesHealthFilter(row, filter);
 
     return checks
       .map((row, index) => ({ row, order: order(row, index) }))

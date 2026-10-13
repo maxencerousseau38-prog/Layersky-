@@ -1,7 +1,7 @@
-import { checkState } from '@/components/health-table';
 import { Metric, MetricGrid } from '@/components/metric';
 import { Page, PageHeader, PageSection } from '@/components/page';
 import { findOrganization, requireSession } from '@/lib/data/workspace';
+import { checkState } from '@/lib/i18n/check-state';
 import { findCheck, listFindings } from '@/lib/i18n/health';
 import { isSupabaseConfigured } from '@/lib/supabase/env';
 import {
@@ -87,6 +87,7 @@ export default async function CheckDetailPage({
   const state = checkState({
     skipped: check.skippedReason !== null,
     findingCount: findings.length,
+    conclusion: check.conclusion,
   });
 
   return (
