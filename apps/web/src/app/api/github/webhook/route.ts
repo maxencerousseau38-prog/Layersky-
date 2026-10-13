@@ -397,6 +397,7 @@ async function handleDelivery(
               report,
               catalogues: analysis.audited.catalogues,
               sourceLocale: SOURCE_LOCALE,
+              addedSourceKeys: analysis.audited.addedSourceKeys,
             })
           : [],
         correction: null,
@@ -583,6 +584,7 @@ async function correct(args: {
       cataloguesDir: args.audited.cataloguesDir,
       layout: args.audited.layout,
       defaultNamespace: args.audited.defaultNamespace,
+      addedSourceKeys: args.audited.addedSourceKeys,
       readSource: checkoutReader(args.checkoutDir),
       translate: translateBatch({ apiUrl, apiToken }),
       /*

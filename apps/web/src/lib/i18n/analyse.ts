@@ -57,6 +57,11 @@ export interface AnalysisResult {
      * correction writes an unprefixed key into this file.
      */
     defaultNamespace: string;
+    /**
+     * Keys this pull request added to the source locale — see
+     * `addedCatalogueKeys`. The only keys a correction may translate.
+     */
+    addedSourceKeys: string[];
   } | null;
 }
 
@@ -137,6 +142,28 @@ export function changedCatalogueKeys(
   if (!base) return [];
   const keys = new Set([...Object.keys(head), ...Object.keys(base)]);
   return [...keys].filter((key) => head[key] !== base[key]);
+}
+
+/**
+ * Keys present in `head` and absent from `base` — what a pull request added.
+ *
+ * Narrower than `changedCatalogueKeys` on purpose. The audit's scope is every
+ * changed key, so an edited translation is checked; a correction's scope is
+ * only the case `CLAUDE.md` names as supported — a key added to the source
+ * locale and missing from targets. A translation missing from *before* the
+ * pull request is the repository's backlog: reported, never corrected on this
+ * pull request's behalf, because that would spend the workspace's budget on
+ * keys its author did not touch.
+ *
+ * Null base — the pull request did not touch the source catalogue, or its
+ * base could not be read — adds nothing: nothing can be shown to be new.
+ */
+export function addedCatalogueKeys(
+  head: Readonly<Record<string, string>> | undefined,
+  base: Readonly<Record<string, string>> | null | undefined,
+): string[] {
+  if (!head || !base) return [];
+  return Object.keys(head).filter((key) => !(key in base));
 }
 
 export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
@@ -248,6 +275,10 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
       layout,
       unreadable: catalogues.unreadable,
       defaultNamespace,
+      addedSourceKeys: addedCatalogueKeys(
+        catalogues.catalogues[sourceLocale],
+        args.baseCatalogues?.[sourceLocale],
+      ),
     },
   };
 }

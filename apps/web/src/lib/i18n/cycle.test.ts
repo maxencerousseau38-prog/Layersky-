@@ -150,6 +150,7 @@ describe('the correction cycle, on the fixture shape', () => {
       cataloguesDir: 'locales',
       layout: 'directory-per-locale',
       defaultNamespace: first.audited?.defaultNamespace as string,
+      addedSourceKeys: first.audited?.addedSourceKeys ?? [],
       readSource: checkoutReader(root),
       charge: async (units) => {
         spend.push(`charge:${units}`);
@@ -270,6 +271,7 @@ describe('the correction cycle, on the fixture shape', () => {
       cataloguesDir: 'locales',
       layout: 'directory-per-locale',
       defaultNamespace: analysis.audited?.defaultNamespace as string,
+      addedSourceKeys: analysis.audited?.addedSourceKeys ?? [],
       readSource: checkoutReader(root),
       translate: async ({ strings }) => ({
         translations: strings.map((s) => ({
@@ -337,6 +339,7 @@ describe('the correction cycle, on the fixture shape', () => {
       cataloguesDir: 'locales',
       layout: 'directory-per-locale',
       defaultNamespace: analysis.audited?.defaultNamespace as string,
+      addedSourceKeys: analysis.audited?.addedSourceKeys ?? [],
       readSource: checkoutReader(root),
       charge: async () => {
         throw new Error(

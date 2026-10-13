@@ -29,6 +29,8 @@ const missing = (key: string, locale: string): Finding => ({
 });
 
 describe('describeFindings', () => {
+  // The keys these cases describe as added by the pull request.
+  const ADDED = ['app.new', 'app.ghost'];
   const catalogues = {
     en: { 'app.new': 'Save changes', 'app.old': 'Old' },
     fr: { 'app.old': 'Ancien' },
@@ -40,6 +42,7 @@ describe('describeFindings', () => {
       report: report([missing('app.new', 'fr')]),
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
 
     expect(row?.correctable).toBe(true);
@@ -65,6 +68,7 @@ describe('describeFindings', () => {
       ]),
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
 
     expect(row?.correctable).toBe(false);
@@ -82,6 +86,7 @@ describe('describeFindings', () => {
       report: report([missing('app.ghost', 'fr')]),
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
 
     expect(row?.correctable).toBe(false);
@@ -104,6 +109,7 @@ describe('describeFindings', () => {
       report: report(many),
       catalogues: { en: source, fr: {} },
       sourceLocale: 'en',
+      addedSourceKeys: Object.keys(source),
     });
 
     expect(rows).toHaveLength(MAX_CORRECTION_UNITS + 1);
@@ -135,11 +141,13 @@ describe('describeFindings', () => {
       report: mixed,
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
     const plan = planCorrection({
       report: mixed,
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
 
     const marked = rows
@@ -160,9 +168,27 @@ describe('describeFindings', () => {
       ]),
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
     // Nothing is dropped: a finding the dashboard does not show is a problem
     // the reviewer does not know about.
     expect(rows).toHaveLength(2);
+  });
+
+  /*
+   * The dashboard must not promise to correct the backlog. A translation
+   * missing from before the pull request is reported, not fixed, and the
+   * row says so in the reader's terms rather than in the planner's.
+   */
+  it('refuses a missing translation for a key the pull request did not add', () => {
+    const [row] = describeFindings({
+      report: report([missing('app.old', 'de')]),
+      catalogues: { ...catalogues, de: {} },
+      sourceLocale: 'en',
+      addedSourceKeys: ['app.new'],
+    });
+
+    expect(row?.correctable).toBe(false);
+    expect(row?.refusalReason).toMatch(/did not add/i);
   });
 });

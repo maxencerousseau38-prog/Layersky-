@@ -260,6 +260,7 @@ describe('analysePullRequest and the default namespace', () => {
       cataloguesDir: audited.cataloguesDir,
       layout: audited.layout,
       defaultNamespace: audited.defaultNamespace,
+      addedSourceKeys: audited.addedSourceKeys,
       readSource: checkoutReader(root),
       translate: async () => ({
         translations: [
@@ -284,5 +285,106 @@ describe('analysePullRequest and the default namespace', () => {
       title: 'Accueil',
       greeting: 'Bon retour, {{name}} !',
     });
+  });
+});
+
+/**
+ * Which keys the pull request added to the source locale — the only keys a
+ * correction may translate.
+ *
+ * Measured on the real repositories that D3 made correctable: 6 of 7 planned
+ * corrections were made only of translations missing from *before* the pull
+ * request. LAMP-dashboard #840 (`7e2f4ff`) changed only
+ * `public/locales/hi/translation.json`; "Ok" had been in English and absent
+ * from French all along, and the correction would have translated it — on the
+ * workspace's budget, on a pull request that never touched French.
+ */
+describe('analysePullRequest and the keys a pull request added', () => {
+  const lamp = () =>
+    repository({
+      'public/locales/en/translation.json': JSON.stringify({
+        Ok: 'Ok',
+        Cancel: 'Cancel',
+      }),
+      'public/locales/fr/translation.json': JSON.stringify({
+        Cancel: 'Annuler',
+      }),
+      'public/locales/hi/translation.json': JSON.stringify({
+        Ok: 'ठीक है',
+        Cancel: 'रद्द करें',
+      }),
+    });
+
+  it('names the keys added to the source, and only those', () => {
+    const root = repository({
+      'public/locales/en/translation.json': JSON.stringify({
+        title: 'Home',
+        greeting: 'Welcome back',
+      }),
+      'public/locales/fr/translation.json': JSON.stringify({
+        title: 'Accueil',
+      }),
+      'src/page.js': 'export const p = (t) => t("title");\n',
+    });
+
+    const analysis = analysePullRequest({
+      rootDir: root,
+      changedFiles: ['public/locales/en/translation.json', 'src/page.js'],
+      baseCatalogues: { en: { title: 'Home' } },
+    });
+
+    // `title` is in scope (the code calls it) but was not added.
+    expect(analysis.audited?.addedSourceKeys).toEqual(['greeting']);
+  });
+
+  it('adds nothing when the pull request leaves the source locale alone', () => {
+    const analysis = analysePullRequest({
+      rootDir: lamp(),
+      changedFiles: ['public/locales/hi/translation.json'],
+      baseCatalogues: { hi: { Ok: 'ठीक', Cancel: 'रद्द करें' } },
+    });
+
+    expect(analysis.audited?.addedSourceKeys).toEqual([]);
+    // The backlog is still reported — visible, not touched.
+    expect(analysis.report?.findings).toEqual([
+      expect.objectContaining({
+        kind: 'missing-translation',
+        key: 'Ok',
+        locale: 'fr',
+      }),
+    ]);
+  });
+
+  it('neither charges, translates nor writes for a translation missing from before', async () => {
+    const root = lamp();
+    const analysis = analysePullRequest({
+      rootDir: root,
+      changedFiles: ['public/locales/hi/translation.json'],
+      baseCatalogues: { hi: { Ok: 'ठीक', Cancel: 'रद्द करें' } },
+    });
+    const audited = analysis.audited;
+    if (!audited || !analysis.report) throw new Error('expected an audit');
+
+    const charge = vi.fn(async () => {});
+    const translate = vi.fn();
+    const outcome = await buildCorrection({
+      report: analysis.report,
+      catalogues: audited.catalogues,
+      sourceLocale: 'en',
+      usedKeys: audited.usedKeys,
+      dynamicCallSites: audited.dynamicCallSites,
+      cataloguesDir: audited.cataloguesDir,
+      layout: audited.layout,
+      defaultNamespace: audited.defaultNamespace,
+      addedSourceKeys: audited.addedSourceKeys,
+      readSource: checkoutReader(root),
+      translate,
+      charge,
+    });
+
+    expect(charge).not.toHaveBeenCalled();
+    expect(translate).not.toHaveBeenCalled();
+    expect(outcome.files).toEqual([]);
+    expect(outcome.refusal).toMatch(/did not add/i);
   });
 });

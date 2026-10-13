@@ -69,10 +69,21 @@ export function planCorrection(args: {
   /** Flattened catalogues from the head checkout, keyed by locale. */
   catalogues: Readonly<Record<string, Readonly<Record<string, string>>>>;
   sourceLocale: string;
+  /**
+   * Keys this pull request added to the source locale (`addedCatalogueKeys`).
+   *
+   * Required, not defaulted: the only case the correction supports is a key
+   * added here and missing from targets. Without it, every missing translation
+   * in scope was corrected — and on real repositories 6 of 7 planned
+   * corrections were the repository's backlog, translated on a pull request
+   * that never touched those keys or those languages.
+   */
+  addedSourceKeys: readonly string[];
   maxUnits?: number;
 }): CorrectionPlan {
   const max = args.maxUnits ?? MAX_CORRECTION_UNITS;
   const source = args.catalogues[args.sourceLocale] ?? {};
+  const added = new Set(args.addedSourceKeys);
 
   /*
    * Nothing is corrected while a catalogue does not parse — not even the
@@ -94,10 +105,18 @@ export function planCorrection(args: {
 
   const correctable: CorrectionUnit[] = [];
   const leftAlone: Finding[] = [];
+  let backlog = 0;
 
   for (const finding of args.report.findings) {
     if (finding.kind !== 'missing-translation' || !finding.locale) {
       leftAlone.push(finding);
+      continue;
+    }
+
+    if (!added.has(finding.key)) {
+      // Missing from before this pull request: reported, not corrected here.
+      leftAlone.push(finding);
+      backlog += 1;
       continue;
     }
 
@@ -122,9 +141,11 @@ export function planCorrection(args: {
       locales: [],
       leftAlone,
       refusal:
-        leftAlone.length > 0
-          ? 'Nothing here is safe to correct automatically.'
-          : 'No findings to correct.',
+        backlog > 0 && backlog === leftAlone.length
+          ? 'The missing translations are for keys this pull request did not add, so they are left for a person.'
+          : leftAlone.length > 0
+            ? 'Nothing here is safe to correct automatically.'
+            : 'No findings to correct.',
     };
   }
 
