@@ -1,5 +1,9 @@
 import 'server-only';
-import type { AuditReport, Finding } from '@localize-infra/eval';
+import {
+  type AuditReport,
+  type Finding,
+  auditPasses,
+} from '@localize-infra/eval';
 
 /**
  * The check a reviewer actually reads.
@@ -224,10 +228,26 @@ export function buildCheckOutput(
       ? ` ${report.dynamicCallSites} call site${report.dynamicCallSites === 1 ? ' was' : 's were'} skipped because the key is computed at runtime and cannot be read statically.`
       : '';
 
+  /*
+   * A catalogue that does not parse comes first, on every branch. It is the
+   * one thing on the pull request i18next will fail on at runtime, and its
+   * language was left out of the audit — so a pass without this sentence
+   * would claim a language it never looked at.
+   */
+  const unreadable = report.unreadableCatalogues ?? [];
+  const brokenTitle =
+    unreadable.length === 1
+      ? '1 catalogue is not valid JSON'
+      : `${unreadable.length} catalogues are not valid JSON`;
+  const brokenNote =
+    unreadable.length > 0
+      ? `**Not valid JSON:** ${unreadable.map((path) => `\`${path}\``).join(', ')}. ${unreadable.length === 1 ? 'Its language was' : 'Their languages were'} not checked, and i18next cannot load ${unreadable.length === 1 ? 'it' : 'them'} either.\n\n`
+      : '';
+
   if (findings.length === 0) {
     return withCorrection({
-      title: 'No i18n problems found',
-      summary: `${scope}${limits}`,
+      title: unreadable.length > 0 ? brokenTitle : 'No i18n problems found',
+      summary: `${brokenNote}${scope}${limits}`,
     });
   }
 
@@ -245,9 +265,10 @@ export function buildCheckOutput(
       ? `\n\n…and ${findings.length - MAX_LISTED} more.`
       : '';
 
+  const problems = `${findings.length} i18n problem${findings.length === 1 ? '' : 's'}`;
   return withCorrection({
-    title: `${findings.length} i18n problem${findings.length === 1 ? '' : 's'}`,
-    summary: `${scope}${limits}\n\n**Found:** ${breakdown}.`,
+    title: unreadable.length > 0 ? `${brokenTitle}; ${problems}` : problems,
+    summary: `${brokenNote}${scope}${limits}\n\n**Found:** ${breakdown}.`,
     text: `${listed.join('\n')}${remainder}`,
   });
 }
@@ -255,8 +276,10 @@ export function buildCheckOutput(
 /**
  * The conclusion, as one exported rule.
  *
- * `neutral` for both a skip and a finding, `success` only for a clean audit
- * that actually ran. A skip is not a pass and must not be coloured like one.
+ * `neutral` for a skip, a finding or a catalogue that did not parse; `success`
+ * only for a clean audit that actually ran over every language. A skip is not
+ * a pass and must not be coloured like one. "Clean" is `auditPasses`, the
+ * audit's own rule, rather than a second copy of it here.
  *
  * Exported because a second reader needs it: the row `lib/i18n/record-check.ts`
  * stores has to carry the same verdict the commit shows, and recomputing
@@ -267,7 +290,7 @@ export function checkConclusion(
   report: AuditReport,
   skipped: string | null,
 ): 'success' | 'neutral' {
-  return skipped || report.findings.length > 0 ? 'neutral' : 'success';
+  return skipped || !auditPasses(report) ? 'neutral' : 'success';
 }
 
 export interface PublishArgs {

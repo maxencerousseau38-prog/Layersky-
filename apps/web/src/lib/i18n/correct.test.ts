@@ -1,5 +1,5 @@
 import type { AuditReport, Finding } from '@localize-infra/eval';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { detectIndent, insertKeys, splitKey } from './catalogue-file';
 import {
   MAX_CORRECTION_UNITS,
@@ -86,6 +86,28 @@ describe('planCorrection', () => {
       { locale: 'fr', key: 'app.new', sourceText: 'Save changes' },
       { locale: 'de', key: 'app.new', sourceText: 'Save changes' },
     ]);
+  });
+
+  /*
+   * No correction while a catalogue does not parse — not even for the
+   * languages that do. The pull request's real problem is the broken file;
+   * opening a second pull request that adds translations around it would
+   * spend the workspace's budget on the wrong thing and bury the one message
+   * the author has to act on. Refused here, before anything is charged.
+   */
+  it('refuses to correct anything while a catalogue does not parse', () => {
+    const plan = planCorrection({
+      report: {
+        ...report([missing('app.new', 'fr'), missing('app.new', 'de')]),
+        unreadableCatalogues: ['locales/hi/translation.json'],
+      },
+      catalogues,
+      sourceLocale: 'en',
+    });
+    expect(plan.units).toEqual([]);
+    expect(plan.locales).toEqual([]);
+    expect(plan.refusal).toContain('locales/hi/translation.json');
+    expect(plan.refusal).toContain('not valid JSON');
   });
 
   /*
@@ -270,6 +292,37 @@ describe('buildCorrection', () => {
       auth: { signIn: 'Se connecter', greeting: 'Bon retour, {{name}} !' },
     });
     expect(outcome.applied).toHaveLength(1);
+  });
+
+  /*
+   * The refusal for a broken catalogue costs nothing: it arrives before the
+   * charge, before the model and before any file is read or written. Pinned
+   * here, on the function the webhook calls, rather than inferred from the
+   * planner's order.
+   */
+  it('neither charges, translates nor writes while a catalogue does not parse', async () => {
+    const charge = vi.fn(async () => {});
+    const translate = vi.fn(async () =>
+      answers([{ key: 'auth.greeting', text: 'Bon retour, {{name}} !' }]),
+    );
+    const readSource = vi.fn(async () => frFile);
+    const outcome = await buildCorrection({
+      ...base,
+      report: {
+        ...report([missing('auth.greeting', 'fr')]),
+        unreadableCatalogues: ['locales/hi/translation.json'],
+      },
+      readSource,
+      translate,
+      charge,
+    });
+
+    expect(charge).not.toHaveBeenCalled();
+    expect(translate).not.toHaveBeenCalled();
+    expect(readSource).not.toHaveBeenCalled();
+    expect(outcome.files).toEqual([]);
+    expect(outcome.charged).toBe(0);
+    expect(outcome.refusal).toContain('locales/hi/translation.json');
   });
 
   /*

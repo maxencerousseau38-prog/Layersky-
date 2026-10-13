@@ -119,9 +119,12 @@ function readJson(path: string): unknown {
 export type CatalogueLayout = 'directory-per-locale' | 'file-per-locale';
 
 export interface LoadedCatalogues {
-  /** Locale to flattened catalogue. Only locales that parsed. */
+  /**
+   * Locale to flattened catalogue. Only locales whose every file parsed — a
+   * locale with one broken file is absent here and named in `unreadable`.
+   */
   catalogues: Record<string, Catalogue>;
-  /** Files found but not parseable, repository-relative. */
+  /** Files found but not parseable, repository-relative, in either layout. */
   unreadable: string[];
   /** Where the catalogues were found, for a report that must be checkable. */
   layout: CatalogueLayout | null;
@@ -179,18 +182,39 @@ export function classifyCataloguePath(
   };
 }
 
-function loadDirectoryPerLocale(localesDir: string): Record<string, Catalogue> {
+interface LoadedLayout {
+  catalogues: Record<string, Catalogue>;
+  /** Files that did not parse, relative to the catalogue directory. */
+  unreadable: string[];
+}
+
+/*
+ * A locale with a file that does not parse is left out entirely, never kept
+ * empty or partial. Registered as `{}`, it read as a language that had lost
+ * every key: compared with its base, each key looked removed, and the audit
+ * reported all of them plus every other language's backlog for them.
+ * LAMP-dashboard #863 left a trailing comma in `hi/translation.json` and that
+ * produced 2,710 findings, none of which named the file. Left out and named,
+ * the locale is reported as unreadable and nothing about it is invented.
+ */
+function loadDirectoryPerLocale(localesDir: string): LoadedLayout {
   const catalogues: Record<string, Catalogue> = {};
+  const unreadable: string[] = [];
   for (const entry of readdirSync(localesDir)) {
     const localePath = join(localesDir, entry);
     if (!statSync(localePath).isDirectory()) continue;
 
     const catalogue: Catalogue = {};
+    let broken = false;
     for (const file of readdirSync(localePath)) {
       if (!file.endsWith('.json')) continue;
       const namespace = file.slice(0, -'.json'.length);
       const parsed = readJson(join(localePath, file));
-      if (parsed === undefined) continue;
+      if (parsed === undefined) {
+        unreadable.push(`${entry}/${file}`);
+        broken = true;
+        continue;
+      }
       flatten(
         parsed,
         namespace === DEFAULT_NAMESPACE ? '' : `${namespace}:`,
@@ -198,22 +222,26 @@ function loadDirectoryPerLocale(localesDir: string): Record<string, Catalogue> {
         catalogue,
       );
     }
-    catalogues[entry] = catalogue;
+    if (!broken) catalogues[entry] = catalogue;
   }
-  return catalogues;
+  return { catalogues, unreadable };
 }
 
-function loadFilePerLocale(localesDir: string): Record<string, Catalogue> {
+function loadFilePerLocale(localesDir: string): LoadedLayout {
   const catalogues: Record<string, Catalogue> = {};
+  const unreadable: string[] = [];
   for (const file of readdirSync(localesDir)) {
     if (!file.endsWith('.json')) continue;
     const parsed = readJson(join(localesDir, file));
-    if (parsed === undefined) continue;
+    if (parsed === undefined) {
+      unreadable.push(file);
+      continue;
+    }
     const catalogue: Catalogue = {};
     flatten(parsed, '', '', catalogue);
     catalogues[file.slice(0, -'.json'.length)] = catalogue;
   }
-  return catalogues;
+  return { catalogues, unreadable };
 }
 
 /**
@@ -247,26 +275,26 @@ export function loadI18nextCatalogues(rootDir: string): LoadedCatalogues {
       }
     });
 
-    const catalogues = hasSubdirectory
+    const loaded = hasSubdirectory
       ? loadDirectoryPerLocale(localesDir)
       : loadFilePerLocale(localesDir);
 
-    if (Object.keys(catalogues).length === 0) continue;
-
-    // Reported as found-but-broken rather than merged into the pass: a file
-    // that did not parse is the single most likely cause of a surprising
-    // result, so the report names it.
-    const unreadable: string[] = [];
-    for (const entry of entries) {
-      const path = join(localesDir, entry);
-      if (entry.endsWith('.json') && readJson(path) === undefined) {
-        unreadable.push(`${relativeDir}/${entry}`);
-      }
+    // A directory whose only catalogues are broken is still the directory:
+    // moving on to the next candidate would report "no catalogues found" about
+    // files that are right there.
+    if (
+      Object.keys(loaded.catalogues).length === 0 &&
+      loaded.unreadable.length === 0
+    ) {
+      continue;
     }
 
     return {
-      catalogues,
-      unreadable,
+      catalogues: loaded.catalogues,
+      // Reported as found-but-broken rather than merged into the pass: a file
+      // that did not parse is the single most likely cause of a surprising
+      // result, so the report names it.
+      unreadable: loaded.unreadable.map((path) => `${relativeDir}/${path}`),
       layout: hasSubdirectory ? 'directory-per-locale' : 'file-per-locale',
       dir: relativeDir,
     };

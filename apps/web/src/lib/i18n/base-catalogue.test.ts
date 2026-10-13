@@ -151,10 +151,13 @@ describe('readBaseCatalogues', () => {
   });
 
   /*
-   * A failed fetch is not an empty file. Treating it as empty would make every
-   * key look changed and fire findings for keys untouched for months.
+   * A base file that does not parse is not an empty file, and not a partial
+   * one either. This test used to accept `{ en: { 'common:a': 'A' } }` — the
+   * readable half kept — which made every key of the broken file look added in
+   * the head and fired findings for keys untouched for months. The locale's
+   * base is unknown, so it is left out and nothing about it is invented.
    */
-  it('skips a base file that does not parse rather than calling it empty', async () => {
+  it('leaves a locale out when one of its base files does not parse, and names the file', async () => {
     const result = await readBaseCatalogues({
       ...args,
       changedFiles: ['locales/en/common.json', 'locales/en/extra.json'],
@@ -162,7 +165,23 @@ describe('readBaseCatalogues', () => {
         path.endsWith('extra.json') ? '{ broken' : JSON.stringify({ a: 'A' }),
       ),
     });
-    expect(result.catalogues).toEqual({ en: { 'common:a': 'A' } });
+    expect(result.catalogues).toEqual({});
+    expect(result.unreadable).toEqual(['locales/en/extra.json']);
+  });
+
+  /*
+   * The pull request that repairs a broken catalogue. Its base does not parse,
+   * so an empty base would make every key in the repaired file look new — and
+   * the fix would be reported as the largest change in the repository.
+   */
+  it('does not call a locale all-new when its only base file is broken', async () => {
+    const result = await readBaseCatalogues({
+      ...args,
+      changedFiles: ['locales/hi/translation.json'],
+      fetchFile: vi.fn(async () => '{\n"a": "ए",\n}\n'),
+    });
+    expect(result.catalogues).toEqual({});
+    expect(result.unreadable).toEqual(['locales/hi/translation.json']);
   });
 
   it('reads the file-per-locale layout too', async () => {

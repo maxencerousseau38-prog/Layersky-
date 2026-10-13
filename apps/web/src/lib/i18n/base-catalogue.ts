@@ -46,6 +46,15 @@ export interface BaseCatalogueResult {
   catalogues: Record<string, Record<string, string>> | null;
   /** Catalogue files the pull request touched, any locale. */
   touched: string[];
+  /**
+   * Touched files whose base version exists but does not parse.
+   *
+   * Their locales are left out of `catalogues` — the base is unknown, not
+   * empty. Empty would make every key in the head file look added: the pull
+   * request that repairs a broken catalogue would be reported as introducing
+   * all of it, plus every other language's backlog for those keys.
+   */
+  unreadable: string[];
 }
 
 export async function readBaseCatalogues(
@@ -58,9 +67,13 @@ export async function readBaseCatalogues(
     if (info) touched.push({ path, ...info });
   }
 
-  if (touched.length === 0) return { catalogues: null, touched: [] };
+  if (touched.length === 0) {
+    return { catalogues: null, touched: [], unreadable: [] };
+  }
 
   const catalogues: Record<string, Record<string, string>> = {};
+  const unreadable: string[] = [];
+  const unknownLocales = new Set<string>();
   for (const { path, locale, namespacePrefix } of touched) {
     // A locale whose file could not be read still gets an entry, so the caller
     // can tell "touched but unreadable" from "not touched at all".
@@ -83,9 +96,17 @@ export async function readBaseCatalogues(
     if (text === null) continue;
 
     const flat = flattenCatalogueJson(text, namespacePrefix);
-    if (!flat) continue;
+    if (!flat) {
+      unreadable.push(path);
+      unknownLocales.add(locale);
+      continue;
+    }
     Object.assign(catalogues[locale] as Record<string, string>, flat);
   }
 
-  return { catalogues, touched: touched.map((t) => t.path) };
+  // After the loop, so a locale's readable files cannot leave a partial base
+  // behind that its broken file makes wrong.
+  for (const locale of unknownLocales) delete catalogues[locale];
+
+  return { catalogues, touched: touched.map((t) => t.path), unreadable };
 }

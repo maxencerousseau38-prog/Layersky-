@@ -74,6 +74,24 @@ export function planCorrection(args: {
   const max = args.maxUnits ?? MAX_CORRECTION_UNITS;
   const source = args.catalogues[args.sourceLocale] ?? {};
 
+  /*
+   * Nothing is corrected while a catalogue does not parse — not even the
+   * languages that do. The broken file is the pull request's real problem and
+   * the one message its author has to act on; a corrective pull request
+   * adding translations around it would spend the workspace's budget on the
+   * wrong thing and bury that message. Refused here, which is before anything
+   * is charged.
+   */
+  const unreadable = args.report.unreadableCatalogues ?? [];
+  if (unreadable.length > 0) {
+    return {
+      units: [],
+      locales: [],
+      leftAlone: args.report.findings,
+      refusal: `${unreadable.map((path) => `\`${path}\``).join(', ')} ${unreadable.length === 1 ? 'is' : 'are'} not valid JSON. Nothing is corrected until ${unreadable.length === 1 ? 'it parses' : 'they parse'}.`,
+    };
+  }
+
   const correctable: CorrectionUnit[] = [];
   const leftAlone: Finding[] = [];
 

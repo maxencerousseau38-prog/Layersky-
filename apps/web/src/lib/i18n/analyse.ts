@@ -3,6 +3,7 @@ import { rm } from 'node:fs/promises';
 import { analysableFiles } from '@/lib/github/webhook';
 import type { LoadedCatalogues } from '@localize-infra/core';
 import {
+  classifyCataloguePath,
   detectI18nLibrary,
   distinctKeys,
   loadI18nextCatalogues,
@@ -45,6 +46,12 @@ export interface AnalysisResult {
     dynamicCallSites: number;
     cataloguesDir: string;
     layout: NonNullable<LoadedCatalogues['layout']>;
+    /**
+     * Catalogue files that did not parse. Their locales are absent from
+     * `catalogues`, and while any exist nothing is corrected — see
+     * `planCorrection`.
+     */
+    unreadable: string[];
   } | null;
 }
 
@@ -142,6 +149,29 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
   }
 
   const sourceLocale = args.sourceLocale ?? 'en';
+
+  /*
+   * The source of truth itself does not parse. Nothing can be judged against
+   * it, and the generic "no `en` catalogue was found" below would send the
+   * reader looking for a file that is right there — so the file is named.
+   */
+  const cataloguesDir = catalogues.dir as string;
+  const layout = catalogues.layout;
+  const brokenSource = catalogues.unreadable.filter(
+    (path) =>
+      classifyCataloguePath(cataloguesDir, layout, path)?.locale ===
+      sourceLocale,
+  );
+  if (brokenSource.length > 0) {
+    const named = brokenSource.map((path) => `\`${path}\``).join(', ');
+    const one = brokenSource.length === 1;
+    return {
+      report: null,
+      audited: null,
+      skipped: `${named} ${one ? 'is' : 'are'} not valid JSON, so the \`${sourceLocale}\` catalogue — the source of truth — could not be read and nothing was checked. i18next cannot load ${one ? 'that file' : 'those files'} either.`,
+    };
+  }
+
   if (!catalogues.catalogues[sourceLocale]) {
     return {
       report: null,
@@ -183,6 +213,7 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
       sourceLocale,
       catalogues: catalogues.catalogues,
       dynamicCallSites: scan.dynamicCallSites,
+      unreadableCatalogues: catalogues.unreadable,
     }),
     skipped: null,
     audited: {
@@ -190,8 +221,9 @@ export function analysePullRequest(args: AnalyseArgs): AnalysisResult {
       catalogues: catalogues.catalogues,
       dynamicCallSites: scan.dynamicCallSites,
       // Non-null by the guard above: `layout === null` returned already.
-      cataloguesDir: catalogues.dir as string,
-      layout: catalogues.layout,
+      cataloguesDir,
+      layout,
+      unreadable: catalogues.unreadable,
     },
   };
 }

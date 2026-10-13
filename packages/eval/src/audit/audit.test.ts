@@ -20,6 +20,22 @@ describe('auditI18n', () => {
     expect(report.localesChecked).toEqual(['fr']);
   });
 
+  /*
+   * A catalogue that did not parse is carried into the report, like the
+   * dynamic call sites: the audit never saw that language, and a report that
+   * passes without saying so claims more than it checked.
+   */
+  it('carries unreadable catalogues into the report, and does not pass with them', () => {
+    const report = auditI18n(
+      base({ unreadableCatalogues: ['locales/hi/translation.json'] }),
+    );
+    expect(report.findings).toEqual([]);
+    expect(report.unreadableCatalogues).toEqual([
+      'locales/hi/translation.json',
+    ]);
+    expect(auditPasses(report)).toBe(false);
+  });
+
   it('reports a key the source does not define', () => {
     const report = auditI18n(base({ usedKeys: ['checkout.submit', 'ghost'] }));
     const finding = report.findings.find((f) => f.key === 'ghost');

@@ -339,7 +339,7 @@ async function handleDelivery(
             layout: located.layout,
             baseSha: decision.baseSha,
           })
-        : { catalogues: null, touched: [] };
+        : { catalogues: null, touched: [], unreadable: [] };
 
     const analysis = analysePullRequest({
       rootDir: materialised.dir,
