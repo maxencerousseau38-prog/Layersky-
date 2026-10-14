@@ -30,6 +30,7 @@ import { resolveInstallationWorkspace } from '@/lib/quota/installation';
 import { recordModelUsage } from '@/lib/quota/usage';
 import { loadI18nextCatalogues } from '@localize-infra/core';
 import type { AuditReport } from '@localize-infra/eval';
+import { CORRECTABLE_LOCALE_DIRS } from '@localize-infra/schemas';
 import { after } from 'next/server';
 import { App } from 'octokit';
 
@@ -544,13 +545,14 @@ async function correct(args: {
   if (!correctableDirectory(args.audited.cataloguesDir)) {
     /*
      * Analysed but not correctable, and said rather than attempted.
-     * `/v1/open-pr` only accepts paths under `locales/`, while the loader also
-     * finds catalogues in `public/locales` and `src/locales`. Discovering that
-     * as a 400 would mean the translations had already been paid for.
+     * `/v1/open-pr` accepts exactly `CORRECTABLE_LOCALE_DIRS`, which today are
+     * the three directories the loader reads — so this is a guard for the day
+     * the loader learns a fourth, not a path any repository takes now.
+     * Discovering it as a 400 would mean the translations had been paid for.
      */
     return {
       attempted: false,
-      reason: `catalogues live in \`${args.audited.cataloguesDir}\`; corrections can only be written under \`locales/\``,
+      reason: `catalogues live in \`${args.audited.cataloguesDir}\`; corrections can only be written under ${CORRECTABLE_LOCALE_DIRS.map((dir) => `\`${dir}/\``).join(', ')}`,
     };
   }
 
