@@ -73,6 +73,8 @@ const answers = (
 });
 
 describe('planCorrection', () => {
+  // The keys these cases describe as added by the pull request.
+  const ADDED = ['app.new', 'app.ghost'];
   const catalogues = {
     en: { 'app.new': 'Save changes', 'app.old': 'Old' },
     fr: { 'app.old': 'Ancien' },
@@ -84,6 +86,7 @@ describe('planCorrection', () => {
       report: report([missing('app.new', 'fr'), missing('app.new', 'de')]),
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
     expect(plan.refusal).toBeNull();
     expect(plan.locales).toEqual(['de', 'fr']);
@@ -108,6 +111,7 @@ describe('planCorrection', () => {
       },
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
     expect(plan.units).toEqual([]);
     expect(plan.locales).toEqual([]);
@@ -131,6 +135,7 @@ describe('planCorrection', () => {
       ]),
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
     expect(plan.units).toEqual([]);
     expect(plan.leftAlone).toHaveLength(1);
@@ -150,6 +155,7 @@ describe('planCorrection', () => {
       ]),
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
     expect(plan.units).toHaveLength(1);
     expect(plan.leftAlone).toHaveLength(1);
@@ -160,6 +166,7 @@ describe('planCorrection', () => {
       report: report([missing('app.ghost', 'fr')]),
       catalogues,
       sourceLocale: 'en',
+      addedSourceKeys: ADDED,
     });
     expect(plan.units).toEqual([]);
     expect(plan.leftAlone).toHaveLength(1);
@@ -175,9 +182,46 @@ describe('planCorrection', () => {
       report: report(many),
       catalogues: { en: source, fr: {} },
       sourceLocale: 'en',
+      addedSourceKeys: Object.keys(source),
     });
     expect(plan.units).toEqual([]);
     expect(plan.refusal).toContain(`over the ${MAX_CORRECTION_UNITS}`);
+  });
+
+  /*
+   * The one case the correction supports, and nothing else: a key the pull
+   * request added to the source locale. Measured before this rule, on real
+   * repositories that D3 had just made correctable: 6 of 7 planned
+   * corrections were made only of translations missing from before the pull
+   * request. LAMP-dashboard #840 touched only Hindi, and the correction would
+   * have translated "Ok" into French on the workspace's budget.
+   */
+  it('corrects only the keys the pull request added to the source', () => {
+    const plan = planCorrection({
+      report: report([missing('app.new', 'fr'), missing('app.old', 'de')]),
+      catalogues: {
+        en: { 'app.new': 'Save changes', 'app.old': 'Old' },
+        fr: { 'app.old': 'Ancien' },
+        de: {},
+      },
+      sourceLocale: 'en',
+      addedSourceKeys: ['app.new'],
+    });
+    expect(plan.units).toEqual([
+      { locale: 'fr', key: 'app.new', sourceText: 'Save changes' },
+    ]);
+    expect(plan.leftAlone).toEqual([missing('app.old', 'de')]);
+  });
+
+  it('refuses, and says why, when every missing translation predates the pull request', () => {
+    const plan = planCorrection({
+      report: report([missing('app.old', 'fr')]),
+      catalogues: { en: { 'app.old': 'Old' }, fr: {} },
+      sourceLocale: 'en',
+      addedSourceKeys: [],
+    });
+    expect(plan.units).toEqual([]);
+    expect(plan.refusal).toMatch(/did not add/i);
   });
 });
 
@@ -309,6 +353,7 @@ describe('buildCorrection', () => {
     catalogues,
     sourceLocale: 'en',
     usedKeys: ['auth.greeting'],
+    addedSourceKeys: ['auth.greeting'],
     dynamicCallSites: 0,
     cataloguesDir: 'locales',
     layout: 'directory-per-locale' as const,
@@ -446,6 +491,7 @@ describe('buildCorrection, charged before the model', () => {
     },
     sourceLocale: 'en',
     usedKeys: ['app.new'],
+    addedSourceKeys: ['app.new'],
     dynamicCallSites: 0,
     cataloguesDir: 'locales',
     layout: 'directory-per-locale' as const,
@@ -578,6 +624,7 @@ describe('buildCorrection, charged before the model', () => {
       report: report([missing('auth.greeting', 'fr')]),
       catalogues: { en: { 'auth.greeting': 'Hello {{name}}' }, fr: {} },
       usedKeys: ['auth.greeting'],
+      addedSourceKeys: ['auth.greeting'],
       charge: async () => {},
       translate: async () =>
         answers([{ key: 'auth.greeting', text: 'Bonjour' }]),
@@ -648,6 +695,7 @@ describe('buildCorrection, charged before the model', () => {
         de: {},
       },
       usedKeys: ['app.new', 'app.old'],
+      addedSourceKeys: ['app.new', 'app.old'],
       translate: async (args) =>
         answers(
           args.strings.map((s) => ({
@@ -787,6 +835,7 @@ describe('buildCorrection, six asked for and five written', () => {
     },
     sourceLocale: 'en',
     usedKeys: [KEY],
+    addedSourceKeys: [KEY],
     dynamicCallSites: 0,
     cataloguesDir: 'locales',
     layout: 'directory-per-locale' as const,
@@ -1033,6 +1082,7 @@ describe('buildCorrection, six asked for and five written', () => {
       },
       report: report(TARGETS.map((l) => missing('auth.greeting', l))),
       usedKeys: ['auth.greeting'],
+      addedSourceKeys: ['auth.greeting'],
       // Every locale drops the placeholder, so every one is refused.
       translate: async () =>
         answers([{ key: 'auth.greeting', text: 'no placeholder here' }]),

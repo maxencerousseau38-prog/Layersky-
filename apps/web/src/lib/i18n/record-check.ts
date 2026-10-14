@@ -52,11 +52,14 @@ export function describeFindings(args: {
   report: AuditReport;
   catalogues: Readonly<Record<string, Readonly<Record<string, string>>>>;
   sourceLocale: string;
+  /** Keys the pull request added to the source — see `planCorrection`. */
+  addedSourceKeys: readonly string[];
 }): RecordableFinding[] {
   const bounded = planCorrection({
     report: args.report,
     catalogues: args.catalogues,
     sourceLocale: args.sourceLocale,
+    addedSourceKeys: args.addedSourceKeys,
   });
 
   /*
@@ -75,6 +78,7 @@ export function describeFindings(args: {
     report: args.report,
     catalogues: args.catalogues,
     sourceLocale: args.sourceLocale,
+    addedSourceKeys: args.addedSourceKeys,
     maxUnits: Number.MAX_SAFE_INTEGER,
   });
 
@@ -101,9 +105,14 @@ export function describeFindings(args: {
       ? bounded.refusal
       : null;
 
+  const added = new Set(args.addedSourceKeys);
+
   return args.report.findings.map((finding) => {
     const key = pair(finding.locale, finding.key);
     const ok = willCorrect.has(key);
+    // The planner's own rule, named for the reader: the key predates the PR.
+    const backlog =
+      finding.kind === 'missing-translation' && !added.has(finding.key);
 
     return {
       kind: finding.kind,
@@ -117,6 +126,7 @@ export function describeFindings(args: {
           // placeholder mismatch in the same batch is refused on its own
           // merits, and saying "over the 40" about it would be false.
           ((couldCorrect.has(key) ? ceilingRefusal : null) ??
+          (backlog ? BACKLOG_REFUSAL : null) ??
           REFUSAL_BY_KIND[finding.kind] ??
           'This one is not corrected automatically.'),
     };
@@ -141,6 +151,13 @@ const REFUSAL_BY_KIND: Record<string, string> = {
   'missing-translation':
     'The source locale does not define this key with any text to translate from.',
 };
+
+/**
+ * A translation missing from before this pull request. Reported so it stays
+ * visible; corrected on no pull request's behalf but the one that adds the key.
+ */
+const BACKLOG_REFUSAL =
+  'This pull request did not add this key; the translation was already missing, so it is left for a person rather than corrected on this pull request’s budget.';
 
 export interface RecordCheckInput {
   organizationId: string;

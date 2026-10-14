@@ -229,6 +229,8 @@ export async function buildCorrection(args: {
   layout: CatalogueLayout;
   /** The loader's `defaultNamespace`: where an unprefixed key is written. */
   defaultNamespace: string;
+  /** Keys the pull request added to the source — the only ones corrected. */
+  addedSourceKeys: readonly string[];
   /** Reads a catalogue file from the checkout. Repository-relative path. */
   readSource: (path: string) => Promise<string | null>;
   translate: TranslateFn;
@@ -249,6 +251,7 @@ export async function buildCorrection(args: {
     report: args.report,
     catalogues: args.catalogues,
     sourceLocale: args.sourceLocale,
+    addedSourceKeys: args.addedSourceKeys,
     maxUnits: args.maxUnits,
   });
 
